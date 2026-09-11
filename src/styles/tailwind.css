@@ -1,0 +1,238 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #334155;
+  --accent: #f59e0b;
+  --accent-foreground: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1d4ed8;
+  --radius: 8px;
+  --font-sans: var(--font-dm-sans), 'DM Sans', sans-serif;
+
+  --status-open: #3b82f6;
+  --status-open-bg: #eff6ff;
+  --status-inprogress: #f59e0b;
+  --status-inprogress-bg: #fffbeb;
+  --status-completed: #10b981;
+  --status-completed-bg: #ecfdf5;
+  --status-closed: #6b7280;
+  --status-closed-bg: #f9fafb;
+  --status-cancelled: #ef4444;
+  --status-cancelled-bg: #fef2f2;
+
+  --priority-normal: #64748b;
+  --priority-normal-bg: #f8fafc;
+  --priority-high: #f59e0b;
+  --priority-high-bg: #fffbeb;
+  --priority-critical: #ef4444;
+  --priority-critical-bg: #fef2f2;
+
+  --billing-pending: #64748b;
+  --billing-pending-bg: #f8fafc;
+  --billing-quoted: #8b5cf6;
+  --billing-quoted-bg: #f5f3ff;
+  --billing-approved: #3b82f6;
+  --billing-approved-bg: #eff6ff;
+  --billing-invoiced: #f59e0b;
+  --billing-invoiced-bg: #fffbeb;
+  --billing-paid: #10b981;
+  --billing-paid-bg: #ecfdf5;
+  --billing-cancelled: #ef4444;
+  --billing-cancelled-bg: #fef2f2;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, h5, h6, p {
+    margin: 0;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-hero-xl {
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 3px;
+  }
+
+  .sidebar-transition {
+    transition: width 300ms ease, min-width 300ms ease;
+  }
+
+  .content-transition {
+    transition: margin-left 300ms ease;
+  }
+
+  .fade-in {
+    animation: fadeIn 200ms ease-in-out;
+  }
+
+  .slide-up {
+    animation: slideUp 200ms ease-out;
+  }
+
+  .scale-in {
+    animation: scaleIn 150ms ease-out;
+  }
+
+  .pulse-highlight {
+    animation: pulseHighlight 600ms ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes pulseHighlight {
+    0% { background-color: transparent; }
+    30% { background-color: #fef9c3; }
+    100% { background-color: transparent; }
+  }
+
+  .row-delete-exit {
+    animation: rowDeleteExit 250ms ease-out forwards;
+  }
+
+  @keyframes rowDeleteExit {
+    0% { opacity: 1; max-height: 60px; }
+    60% { opacity: 0; max-height: 60px; }
+    100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+  }
+
+  .blob-primary {
+    background: radial-gradient(ellipse at 40% 60%, #1d4ed8 0%, #1e40af 50%, #1e3a8a 100%);
+    filter: blur(0px);
+  }
+
+  .status-badge-open {
+    background-color: var(--status-open-bg);
+    color: var(--status-open);
+  }
+
+  .status-badge-inprogress {
+    background-color: var(--status-inprogress-bg);
+    color: var(--status-inprogress);
+  }
+
+  .status-badge-completed {
+    background-color: var(--status-completed-bg);
+    color: var(--status-completed);
+  }
+
+  .status-badge-closed {
+    background-color: var(--status-closed-bg);
+    color: var(--status-closed);
+  }
+
+  .status-badge-cancelled {
+    background-color: var(--status-cancelled-bg);
+    color: var(--status-cancelled);
+  }
+
+  .priority-badge-normal {
+    background-color: var(--priority-normal-bg);
+    color: var(--priority-normal);
+  }
+
+  .priority-badge-high {
+    background-color: var(--priority-high-bg);
+    color: var(--priority-high);
+  }
+
+  .priority-badge-critical {
+    background-color: var(--priority-critical-bg);
+    color: var(--priority-critical);
+  }
+
+  .billing-badge-pending {
+    background-color: var(--billing-pending-bg);
+    color: var(--billing-pending);
+  }
+
+  .billing-badge-quoted {
+    background-color: var(--billing-quoted-bg);
+    color: var(--billing-quoted);
+  }
+
+  .billing-badge-approved {
+    background-color: var(--billing-approved-bg);
+    color: var(--billing-approved);
+  }
+
+  .billing-badge-invoiced {
+    background-color: var(--billing-invoiced-bg);
+    color: var(--billing-invoiced);
+  }
+
+  .billing-badge-paid {
+    background-color: var(--billing-paid-bg);
+    color: var(--billing-paid);
+  }
+
+  .billing-badge-cancelled {
+    background-color: var(--billing-cancelled-bg);
+    color: var(--billing-cancelled);
+  }
+}
