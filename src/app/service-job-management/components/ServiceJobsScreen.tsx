@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import Icon from '@/components/ui/AppIcon';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -41,6 +41,52 @@ export default function ServiceJobsScreen() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
+
+  // Load jobs from database on mount
+  useEffect(() => {
+    fetch('/api/service-jobs')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          // Map API response to ServiceJob shape
+          const mapped: ServiceJob[] = data.map((j: Record<string, unknown>) => ({
+            id: j.id as string,
+            jobOrderNo: j.jobOrderNo as string,
+            requestDate: j.requestDate as string,
+            clientId: j.clientId as string,
+            clientName: j.clientId as string,
+            siteId: j.siteId as string,
+            siteName: j.siteId as string,
+            generatorId: j.generatorId as string,
+            generatorName: j.generatorId as string,
+            serviceType: j.serviceType as string,
+            problem: (j.problem as string) || '',
+            priority: (j.priority as Priority) || 'Normal',
+            scheduledDate: (j.scheduledDate as string) || '',
+            status: (j.status as JobStatus) || 'Open',
+            leadTechnicianId: (j.leadTechnicianId as string) || '',
+            leadTechnicianName: (j.leadTechnicianId as string) || '',
+            additionalTechnicianName: (j.additionalTechnicianId as string) || undefined,
+            startDate: (j.startDate as string) || undefined,
+            completionDate: (j.completionDate as string) || undefined,
+            runningHours: (j.runningHours as number) || undefined,
+            findings: (j.findings as string) || undefined,
+            workPerformed: (j.workPerformed as string) || undefined,
+            testingResults: (j.testingResults as string) || undefined,
+            recommendations: (j.recommendations as string) || undefined,
+            partsMaterialsSummary: (j.partsMaterialsSummary as string) || undefined,
+            customerRepresentative: (j.customerRepresentative as string) || undefined,
+            customerContact: (j.customerContact as string) || undefined,
+            serviceReportNo: (j.serviceReportNo as string) || undefined,
+            quotationNo: (j.quotationNo as string) || undefined,
+            billingStatus: (j.billingStatus as BillingStatus) || 'Pending',
+            remarks: (j.remarks as string) || undefined,
+          }));
+          setJobs(mapped);
+        }
+      })
+      .catch(() => { /* keep mock data on error */ });
+  }, []);
 
   const filtered = useMemo(() => {
     return jobs.filter((j) => {
