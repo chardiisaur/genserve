@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
-import { getAuthUser, clearAuthUser, type AuthUser } from '@/lib/auth';
+import { getAuthUser, saveAuthUser, clearAuthUser, getInitials, type AuthUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
 interface TopbarProps {
@@ -18,13 +18,35 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    const user = getAuthUser();
-    setCurrentUser(user);
+    // Load from localStorage immediately for fast render
+    const cached = getAuthUser();
+    if (cached) setCurrentUser(cached);
+
+    // Then refresh from server to get latest name/role
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.user) {
+          const fresh: AuthUser = {
+            id: json.user.id,
+            name: json.user.name,
+            email: json.user.email,
+            role: json.user.role,
+            initials: getInitials(json.user.name),
+          };
+          saveAuthUser(fresh);
+          setCurrentUser(fresh);
+        }
+      })
+      .catch(() => {/* silently ignore */});
   }, []);
 
-  const handleLogout = () => {
-    clearAuthUser();
+  const handleLogout = async () => {
     setUserMenuOpen(false);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {/* ignore */}
+    clearAuthUser();
     router.push('/sign-up-login');
   };
 
@@ -37,8 +59,13 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
   ];
 
   const displayName = currentUser?.name ?? 'Guest';
-  const displayInitials = currentUser?.initials ?? 'G';
+  const displayInitials = currentUser?.initials ?? getInitials(displayName);
   const displayRole = currentUser?.role ?? '';
+
+  const roleLabel = displayRole === 'ADMIN' ? 'Admin'
+    : displayRole === 'MANAGER' ? 'Manager'
+    : displayRole === 'FIELD_TECHNICIAN' ? 'Field Technician'
+    : displayRole;
 
   return (
     <header className="h-14 border-b border-border bg-card flex items-center px-4 gap-3 flex-shrink-0 z-20">
@@ -107,7 +134,7 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
                     <div className={`mt-0.5 p-1.5 rounded-md flex-shrink-0 ${
                       n.type === 'warning' ? 'bg-amber-50 text-amber-600' :
                       n.type === 'alert' ? 'bg-red-50 text-red-600' :
-                      n.type === 'success'? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
+                      n.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
                     }`}>
                       <Icon name={n.icon as Parameters<typeof Icon>[0]['name']} size={13} />
                     </div>
@@ -137,7 +164,7 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-xs font-500 text-foreground leading-tight">{displayName}</p>
-            <p className="text-2xs text-muted-foreground">{displayRole}</p>
+            <p className="text-2xs text-muted-foreground">{roleLabel}</p>
           </div>
           <Icon name="ChevronDownIcon" size={12} className="text-muted-foreground hidden sm:block" />
         </button>
@@ -150,7 +177,7 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
                 <p className="text-xs font-600 text-foreground">{displayName}</p>
                 <p className="text-2xs text-muted-foreground mt-0.5">{currentUser?.email ?? ''}</p>
                 <span className="inline-block mt-1.5 text-2xs font-600 px-2 py-0.5 rounded-md bg-primary/10 text-primary">
-                  {displayRole}
+                  {roleLabel}
                 </span>
               </div>
               <div className="py-1">

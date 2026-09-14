@@ -1,6 +1,7 @@
 'use client';
 
 export interface AuthUser {
+  id: string;
   email: string;
   role: string;
   name: string;
@@ -8,12 +9,6 @@ export interface AuthUser {
 }
 
 const AUTH_KEY = 'gsms_auth_user';
-
-export const demoCredentials: AuthUser[] = [
-  { email: 'admin@indentrade.com.ph', role: 'Admin', name: 'Ana Reyes', initials: 'AR' },
-  { email: 'manager@indentrade.com.ph', role: 'Manager', name: 'Marco Santos', initials: 'MS' },
-  { email: 'technician@indentrade.com.ph', role: 'Field Technician', name: 'Rico Dela Cruz', initials: 'RD' },
-];
 
 export function saveAuthUser(user: AuthUser): void {
   if (typeof window !== 'undefined') {
@@ -35,4 +30,13 @@ export function clearAuthUser(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(AUTH_KEY);
   }
+}
+
+export function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
