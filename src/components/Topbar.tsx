@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
+import { getAuthUser, clearAuthUser, type AuthUser } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -10,7 +12,21 @@ interface TopbarProps {
 }
 
 export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed }: TopbarProps) {
+  const router = useRouter();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    const user = getAuthUser();
+    setCurrentUser(user);
+  }, []);
+
+  const handleLogout = () => {
+    clearAuthUser();
+    setUserMenuOpen(false);
+    router.push('/sign-up-login');
+  };
 
   const notifications = [
     { id: 'notif-001', type: 'warning', message: '4 PMS records are overdue', time: '2h ago', icon: 'CalendarDaysIcon' },
@@ -19,6 +35,10 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
     { id: 'notif-004', type: 'success', message: 'Invoice INV-2026-0047 marked as Paid', time: '6h ago', icon: 'BanknotesIcon' },
     { id: 'notif-005', type: 'warning', message: 'Technician M. Santos deployment return overdue', time: '1d ago', icon: 'TruckIcon' },
   ];
+
+  const displayName = currentUser?.name ?? 'Guest';
+  const displayInitials = currentUser?.initials ?? 'G';
+  const displayRole = currentUser?.role ?? '';
 
   return (
     <header className="h-14 border-b border-border bg-card flex items-center px-4 gap-3 flex-shrink-0 z-20">
@@ -106,16 +126,45 @@ export default function Topbar({ onMenuClick, onSidebarToggle, sidebarCollapsed 
         )}
       </div>
 
-      {/* User avatar */}
-      <div className="flex items-center gap-2 cursor-pointer group">
-        <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600">
-          AR
-        </div>
-        <div className="hidden sm:block">
-          <p className="text-xs font-500 text-foreground leading-tight">Ana Reyes</p>
-          <p className="text-2xs text-muted-foreground">Admin</p>
-        </div>
-        <Icon name="ChevronDownIcon" size={12} className="text-muted-foreground hidden sm:block" />
+      {/* User avatar with dropdown */}
+      <div className="relative">
+        <button
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          className="flex items-center gap-2 cursor-pointer group hover:bg-muted rounded-md px-2 py-1 transition-colors"
+        >
+          <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600">
+            {displayInitials}
+          </div>
+          <div className="hidden sm:block text-left">
+            <p className="text-xs font-500 text-foreground leading-tight">{displayName}</p>
+            <p className="text-2xs text-muted-foreground">{displayRole}</p>
+          </div>
+          <Icon name="ChevronDownIcon" size={12} className="text-muted-foreground hidden sm:block" />
+        </button>
+
+        {userMenuOpen && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setUserMenuOpen(false)} />
+            <div className="absolute right-0 top-full mt-2 w-52 bg-card border border-border rounded-lg shadow-dropdown z-40 scale-in">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-xs font-600 text-foreground">{displayName}</p>
+                <p className="text-2xs text-muted-foreground mt-0.5">{currentUser?.email ?? ''}</p>
+                <span className="inline-block mt-1.5 text-2xs font-600 px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                  {displayRole}
+                </span>
+              </div>
+              <div className="py-1">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <Icon name="ArrowRightOnRectangleIcon" size={14} />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </header>
   );
