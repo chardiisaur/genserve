@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AppLogo from '@/components/ui/AppLogo';
 import Icon from '@/components/ui/AppIcon';
+import { getAuthUser, AuthUser } from '@/lib/auth';
 
 interface NavItem {
   id: string;
@@ -66,6 +67,7 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
   {
     group: 'Configuration',
     items: [
+      { id: 'nav-user-management', label: 'User Management', icon: 'UserGroupIcon', href: '/user-management' },
       { id: 'nav-service-types', label: 'Service Types', icon: 'TagIcon', href: '/service-types' },
       { id: 'nav-settings', label: 'Settings', icon: 'Cog8ToothIcon', href: '/settings' },
     ],
@@ -81,6 +83,12 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentPath }: SidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['', 'Service', 'Inventory', 'Finance']);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+
+  useEffect(() => {
+    const user = getAuthUser();
+    setAuthUser(user);
+  }, []);
 
   const toggleGroup = (group: string) => {
     setExpandedGroups(prev =>
@@ -109,6 +117,7 @@ export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentP
           toggleGroup={toggleGroup}
           isActive={isActive}
           navGroups={adminNavGroups}
+          authUser={authUser}
         />
       </aside>
 
@@ -139,6 +148,7 @@ export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentP
           toggleGroup={toggleGroup}
           isActive={isActive}
           navGroups={adminNavGroups}
+          authUser={authUser}
         />
       </aside>
     </>
@@ -151,13 +161,19 @@ function SidebarContent({
   toggleGroup,
   isActive,
   navGroups,
+  authUser,
 }: {
   collapsed: boolean;
   expandedGroups: string[];
   toggleGroup: (g: string) => void;
   isActive: (href?: string) => boolean;
   navGroups: { group: string; items: NavItem[] }[];
+  authUser: AuthUser | null;
 }) {
+  const displayName = authUser?.name ?? 'Guest';
+  const displayRole = authUser?.role ?? '';
+  const displayInitials = authUser?.initials ?? (displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2));
+
   return (
     <>
       {/* Logo */}
@@ -212,11 +228,11 @@ function SidebarContent({
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-md hover:bg-muted transition-colors cursor-pointer">
             <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 flex-shrink-0">
-              AR
+              {displayInitials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-500 text-foreground truncate">Ana Reyes</p>
-              <p className="text-2xs text-muted-foreground truncate">Admin</p>
+              <p className="text-xs font-500 text-foreground truncate">{displayName}</p>
+              <p className="text-2xs text-muted-foreground truncate">{displayRole}</p>
             </div>
             <Icon name="EllipsisVerticalIcon" size={14} className="text-muted-foreground" />
           </div>
@@ -224,8 +240,8 @@ function SidebarContent({
       )}
       {collapsed && (
         <div className="border-t border-border p-2 flex justify-center">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 cursor-pointer">
-            AR
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 cursor-pointer" title={displayName}>
+            {displayInitials}
           </div>
         </div>
       )}
