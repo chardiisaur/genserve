@@ -174,6 +174,11 @@ function SidebarContent({
   const displayRole = authUser?.role ?? '';
   const displayInitials = authUser?.initials ?? (displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2));
 
+  const roleLabel = displayRole === 'ADMIN' ? 'Admin'
+    : displayRole === 'MANAGER' ? 'Manager'
+    : displayRole === 'FIELD_TECHNICIAN' ? 'Field Technician'
+    : displayRole;
+
   return (
     <>
       {/* Logo */}
@@ -232,7 +237,7 @@ function SidebarContent({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-500 text-foreground truncate">{displayName}</p>
-              <p className="text-2xs text-muted-foreground truncate">{displayRole}</p>
+              <p className="text-2xs text-muted-foreground truncate">{roleLabel}</p>
             </div>
             <Icon name="EllipsisVerticalIcon" size={14} className="text-muted-foreground" />
           </div>

@@ -1,35 +1,38 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '@/components/AppLayout';
 import Icon from '@/components/ui/AppIcon';
 
 interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
-  role: 'Admin' | 'Manager' | 'Field Technician';
-  initials: string;
-  status: 'Active' | 'Inactive';
+  role: 'ADMIN' | 'MANAGER' | 'FIELD_TECHNICIAN';
+  status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
 }
 
-const initialUsers: User[] = [
-  { id: 1, name: 'Ana Reyes', email: 'admin@indentrade.com.ph', role: 'Admin', initials: 'AR', status: 'Active', createdAt: '2025-01-10' },
-  { id: 2, name: 'Marco Santos', email: 'manager@indentrade.com.ph', role: 'Manager', initials: 'MS', status: 'Active', createdAt: '2025-02-14' },
-  { id: 3, name: 'Rico Dela Cruz', email: 'technician@indentrade.com.ph', role: 'Field Technician', initials: 'RD', status: 'Active', createdAt: '2025-03-05' },
+const ROLES: { value: User['role']; label: string }[] = [
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'MANAGER', label: 'Manager' },
+  { value: 'FIELD_TECHNICIAN', label: 'Field Technician' },
 ];
 
-const ROLES: User['role'][] = ['Admin', 'Manager', 'Field Technician'];
-
 const roleColors: Record<User['role'], string> = {
-  Admin: 'bg-red-500/10 text-red-400',
-  Manager: 'bg-blue-500/10 text-blue-400',
-  'Field Technician': 'bg-green-500/10 text-green-400',
+  ADMIN: 'bg-red-500/10 text-red-400',
+  MANAGER: 'bg-blue-500/10 text-blue-400',
+  FIELD_TECHNICIAN: 'bg-green-500/10 text-green-400',
+};
+
+const roleLabels: Record<User['role'], string> = {
+  ADMIN: 'Admin',
+  MANAGER: 'Manager',
+  FIELD_TECHNICIAN: 'Field Technician',
 };
 
 function getInitials(name: string): string {
-  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
 interface UserFormData {
@@ -40,34 +43,79 @@ interface UserFormData {
   status: User['status'];
 }
 
+interface PasswordFormData {
+  newPassword: string;
+  confirmPassword: string;
+}
+
 const emptyForm: UserFormData = {
   name: '',
   email: '',
-  role: 'Field Technician',
+  role: 'FIELD_TECHNICIAN',
   password: '',
-  status: 'Active',
+  status: 'ACTIVE',
 };
 
 export default function UserManagementScreen() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<UserFormData>(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<User | null>(null);
   const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [globalError, setGlobalError] = useState('');
 
-  const filtered = users.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    u.role.toLowerCase().includes(search.toLowerCase())
+  // Change password modal
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordTarget, setPasswordTarget] = useState<User | null>(null);
+  const [passwordForm, setPasswordForm] = useState<PasswordFormData>({ newPassword: '', confirmPassword: '' });
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    setGlobalError('');
+    try {
+      let res = await fetch('/api/users');
+      if (!res.ok) {
+        const json = await res.json();
+        setGlobalError(json.error ?? 'Failed to load users.');
+        return;
+      }
+      const json = await res.json();
+      setUsers(json.users ?? []);
+    } catch {
+      setGlobalError('Unable to connect to server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const filtered = users.filter(
+    (u) =>
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      roleLabels[u.role].toLowerCase().includes(search.toLowerCase())
   );
 
   const openCreate = () => {
     setEditingUser(null);
     setForm(emptyForm);
     setFormError('');
+    setFormSuccess('');
     setShowPassword(false);
     setShowModal(true);
   };
@@ -76,38 +124,139 @@ export default function UserManagementScreen() {
     setEditingUser(user);
     setForm({ name: user.name, email: user.email, role: user.role, password: '', status: user.status });
     setFormError('');
+    setFormSuccess('');
     setShowPassword(false);
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const openChangePassword = (user: User) => {
+    setPasswordTarget(user);
+    setPasswordForm({ newPassword: '', confirmPassword: '' });
+    setPasswordError('');
+    setPasswordSuccess('');
+    setShowNewPw(false);
+    setShowConfirmPw(false);
+    setShowPasswordModal(true);
+  };
+
+  const handleSave = async () => {
+    setFormError('');
+    setFormSuccess('');
     if (!form.name.trim()) { setFormError('Name is required.'); return; }
     if (!form.email.trim()) { setFormError('Email is required.'); return; }
     if (!editingUser && !form.password.trim()) { setFormError('Password is required for new users.'); return; }
 
-    if (editingUser) {
-      setUsers(prev => prev.map(u => u.id === editingUser.id
-        ? { ...u, name: form.name, email: form.email, role: form.role, status: form.status, initials: getInitials(form.name) }
-        : u
-      ));
-    } else {
-      const newUser: User = {
-        id: Date.now(),
-        name: form.name,
-        email: form.email,
-        role: form.role,
-        initials: getInitials(form.name),
-        status: form.status,
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      setUsers(prev => [...prev, newUser]);
+    setIsSaving(true);
+    try {
+      let res: Response;
+      if (editingUser) {
+        const body: Record<string, string> = {
+          name: form.name,
+          email: form.email,
+          role: form.role,
+          status: form.status,
+        };
+        res = await fetch(`/api/users/${editingUser.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } else {
+        res = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name,
+            email: form.email,
+            password: form.password,
+            role: form.role,
+            status: form.status,
+          }),
+        });
+      }
+
+      const json = await res.json();
+      if (!res.ok) {
+        setFormError(json.error ?? 'Failed to save user.');
+        return;
+      }
+
+      setFormSuccess(editingUser ? 'User updated successfully.' : 'User created successfully.');
+      await fetchUsers();
+      setTimeout(() => setShowModal(false), 800);
+    } catch {
+      setFormError('Unable to connect to server.');
+    } finally {
+      setIsSaving(false);
     }
-    setShowModal(false);
   };
 
-  const handleDelete = (id: number) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
-    setDeleteConfirm(null);
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      let res = await fetch(`/api/users/${deleteConfirm.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) {
+        setGlobalError(json.error ?? 'Failed to delete user.');
+        setDeleteConfirm(null);
+        return;
+      }
+      await fetchUsers();
+      setDeleteConfirm(null);
+    } catch {
+      setGlobalError('Unable to connect to server.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleToggleStatus = async (user: User) => {
+    const newStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      let res = await fetch(`/api/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setGlobalError(json.error ?? 'Failed to update status.');
+        return;
+      }
+      await fetchUsers();
+    } catch {
+      setGlobalError('Unable to connect to server.');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordTarget) return;
+    setPasswordError('');
+    setPasswordSuccess('');
+    if (!passwordForm.newPassword.trim()) { setPasswordError('New password is required.'); return; }
+    if (passwordForm.newPassword.length < 6) { setPasswordError('Password must be at least 6 characters.'); return; }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPasswordError('Password confirmation does not match.'); return; }
+
+    setIsSavingPassword(true);
+    try {
+      let res = await fetch(`/api/users/${passwordTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: passwordForm.newPassword, confirmPassword: passwordForm.confirmPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPasswordError(json.error ?? 'Failed to change password.');
+        return;
+      }
+      setPasswordSuccess('Password changed successfully.');
+      setTimeout(() => setShowPasswordModal(false), 800);
+    } catch {
+      setPasswordError('Unable to connect to server.');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   return (
@@ -119,6 +268,17 @@ export default function UserManagementScreen() {
           <p className="text-sm text-muted-foreground mt-0.5">Manage system accounts — create, edit, or remove users and assign roles.</p>
         </div>
 
+        {/* Global error */}
+        {globalError && (
+          <div className="flex items-center gap-2 px-4 py-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <Icon name="ExclamationCircleIcon" size={16} />
+            {globalError}
+            <button onClick={() => setGlobalError('')} className="ml-auto text-red-400 hover:text-red-300">
+              <Icon name="XMarkIcon" size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 mb-5">
           <div className="relative flex-1 max-w-xs">
@@ -127,7 +287,7 @@ export default function UserManagementScreen() {
               type="text"
               placeholder="Search users..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
@@ -144,9 +304,9 @@ export default function UserManagementScreen() {
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
             { label: 'Total Users', value: users.length, icon: 'UsersIcon', color: 'text-blue-400' },
-            { label: 'Active', value: users.filter(u => u.status === 'Active').length, icon: 'CheckCircleIcon', color: 'text-green-400' },
-            { label: 'Inactive', value: users.filter(u => u.status === 'Inactive').length, icon: 'XCircleIcon', color: 'text-muted-foreground' },
-          ].map(stat => (
+            { label: 'Active', value: users.filter((u) => u.status === 'ACTIVE').length, icon: 'CheckCircleIcon', color: 'text-green-400' },
+            { label: 'Inactive', value: users.filter((u) => u.status === 'INACTIVE').length, icon: 'XCircleIcon', color: 'text-muted-foreground' },
+          ].map((stat) => (
             <div key={stat.label} className="bg-card border border-border rounded-lg p-4 flex items-center gap-3">
               <Icon name={stat.icon as Parameters<typeof Icon>[0]['name']} size={20} className={stat.color} />
               <div>
@@ -159,68 +319,90 @@ export default function UserManagementScreen() {
 
         {/* Table */}
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">User</th>
-                <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Email</th>
-                <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Role</th>
-                <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Created</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">No users found.</td>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground text-sm">
+              <Icon name="ArrowPathIcon" size={16} className="animate-spin" />
+              Loading users...
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40">
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">User</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Email</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Role</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Created</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
-              )}
-              {filtered.map(user => (
-                <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 flex-shrink-0">
-                        {user.initials}
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">No users found.</td>
+                  </tr>
+                )}
+                {filtered.map((user) => (
+                  <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 flex-shrink-0">
+                          {getInitials(user.name)}
+                        </div>
+                        <span className="font-500 text-foreground">{user.name}</span>
                       </div>
-                      <span className="font-500 text-foreground">{user.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-500 ${roleColors[user.role]}`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-500 ${user.status === 'Active' ? 'text-green-400' : 'text-muted-foreground'}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-green-400' : 'bg-muted-foreground'}`} />
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{user.createdAt}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 justify-end">
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-500 ${roleColors[user.role]}`}>
+                        {roleLabels[user.role]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
                       <button
-                        onClick={() => openEdit(user)}
-                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        title="Edit user"
+                        onClick={() => handleToggleStatus(user)}
+                        title={user.status === 'ACTIVE' ? 'Click to deactivate' : 'Click to activate'}
+                        className={`inline-flex items-center gap-1 text-xs font-500 px-2 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                          user.status === 'ACTIVE' ?'text-green-400 border-green-500/20 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20' :'text-muted-foreground border-border hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/20'
+                        }`}
                       >
-                        <Icon name="PencilIcon" size={14} />
+                        <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'ACTIVE' ? 'bg-green-400' : 'bg-muted-foreground'}`} />
+                        {user.status === 'ACTIVE' ? 'Active' : 'Inactive'}
                       </button>
-                      <button
-                        onClick={() => setDeleteConfirm(user.id)}
-                        className="p-1.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
-                        title="Delete user"
-                      >
-                        <Icon name="TrashIcon" size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {new Date(user.createdAt).toLocaleDateString('en-CA')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button
+                          onClick={() => openEdit(user)}
+                          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          title="Edit user"
+                        >
+                          <Icon name="PencilIcon" size={14} />
+                        </button>
+                        <button
+                          onClick={() => openChangePassword(user)}
+                          className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          title="Change password"
+                        >
+                          <Icon name="KeyIcon" size={14} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(user)}
+                          className="p-1.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                          title="Delete user"
+                        >
+                          <Icon name="TrashIcon" size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -241,12 +423,18 @@ export default function UserManagementScreen() {
                   {formError}
                 </div>
               )}
+              {formSuccess && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-md text-green-400 text-xs">
+                  <Icon name="CheckCircleIcon" size={14} />
+                  {formSuccess}
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-500 text-muted-foreground mb-1.5">Full Name</label>
                 <input
                   type="text"
                   value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Juan dela Cruz"
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -256,7 +444,7 @@ export default function UserManagementScreen() {
                 <input
                   type="email"
                   value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                   placeholder="user@indentrade.com.ph"
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
@@ -265,57 +453,136 @@ export default function UserManagementScreen() {
                 <label className="block text-xs font-500 text-muted-foreground mb-1.5">Role</label>
                 <select
                   value={form.role}
-                  onChange={e => setForm(f => ({ ...f, role: e.target.value as User['role'] }))}
+                  onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as User['role'] }))}
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                  {ROLES.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-500 text-muted-foreground mb-1.5">
-                  {editingUser ? 'New Password (leave blank to keep current)' : 'Password'}
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(v => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Icon name={showPassword ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
-                  </button>
+              {!editingUser && (
+                <div>
+                  <label className="block text-xs font-500 text-muted-foreground mb-1.5">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                      placeholder="••••••••"
+                      className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Icon name={showPassword ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
                 <label className="block text-xs font-500 text-muted-foreground mb-1.5">Status</label>
                 <select
                   value={form.status}
-                  onChange={e => setForm(f => ({ ...f, status: e.target.value as User['status'] }))}
+                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as User['status'] }))}
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="INACTIVE">Inactive</option>
                 </select>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground font-500 rounded-md hover:bg-primary/90 transition-colors"
+                disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground font-500 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
               >
+                {isSaving && <Icon name="ArrowPathIcon" size={13} className="animate-spin" />}
                 {editingUser ? 'Save Changes' : 'Create User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {showPasswordModal && passwordTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div>
+                <h2 className="text-sm font-600 text-foreground">Change Password</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{passwordTarget.name}</p>
+              </div>
+              <button onClick={() => setShowPasswordModal(false)} className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+                <Icon name="XMarkIcon" size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {passwordError && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-md text-red-400 text-xs">
+                  <Icon name="ExclamationCircleIcon" size={14} />
+                  {passwordError}
+                </div>
+              )}
+              {passwordSuccess && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-md text-green-400 text-xs">
+                  <Icon name="CheckCircleIcon" size={14} />
+                  {passwordSuccess}
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-500 text-muted-foreground mb-1.5">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
+                    placeholder="Min. 6 characters"
+                    className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button type="button" onClick={() => setShowNewPw((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <Icon name={showNewPw ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-muted-foreground mb-1.5">Confirm New Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPw ? 'text' : 'password'}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                    placeholder="Re-enter new password"
+                    className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button type="button" onClick={() => setShowConfirmPw((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <Icon name={showConfirmPw ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <button onClick={() => setShowPasswordModal(false)} disabled={isSavingPassword} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button
+                onClick={handleChangePassword}
+                disabled={isSavingPassword}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground font-500 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
+              >
+                {isSavingPassword && <Icon name="ArrowPathIcon" size={13} className="animate-spin" />}
+                Change Password
               </button>
             </div>
           </div>
@@ -336,19 +603,23 @@ export default function UserManagementScreen() {
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to delete <span className="font-500 text-foreground">{users.find(u => u.id === deleteConfirm)?.name}</span>?
+              Are you sure you want to delete{' '}
+              <span className="font-500 text-foreground">{deleteConfirm.name}</span>?
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
-                className="px-4 py-2 text-sm bg-red-500 text-white font-500 rounded-md hover:bg-red-600 transition-colors"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-red-500 text-white font-500 rounded-md hover:bg-red-600 transition-colors disabled:opacity-60"
               >
+                {isDeleting && <Icon name="ArrowPathIcon" size={13} className="animate-spin" />}
                 Delete
               </button>
             </div>

@@ -2,8 +2,36 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+async function hashPassword(password: string): Promise<string> {
+  // Dynamic import to handle bcryptjs v3 ESM-only module
+  const bcrypt = await import('bcryptjs');
+  const bcryptModule = (bcrypt as any).default ?? bcrypt;
+  return bcryptModule.hash(password, 12);
+}
+
 async function main() {
   console.log('🌱 Seeding GenServe GSMS database...');
+
+  // ── Initial Admin User ─────────────────────────────────────────
+  const userCount = await prisma.user.count();
+  if (userCount === 0) {
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL ?? 'admin@indentrade.com.ph';
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD ?? 'GSMSadmin@2026';
+    const adminName = process.env.INITIAL_ADMIN_NAME ?? 'System Administrator';
+    const passwordHash = await hashPassword(adminPassword);
+    await prisma.user.create({
+      data: {
+        name: adminName,
+        email: adminEmail.toLowerCase(),
+        passwordHash,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`✅ Initial admin created: ${adminEmail}`);
+  } else {
+    console.log(`ℹ️  Users already exist — skipping admin seed`);
+  }
 
   // ── Service Types ──────────────────────────────────────────────
   const serviceTypes = [

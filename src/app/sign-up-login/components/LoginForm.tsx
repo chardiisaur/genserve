@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
-import { saveAuthUser } from '@/lib/auth';
+import { saveAuthUser, getInitials } from '@/lib/auth';
 
 interface LoginFormData {
   email: string;
@@ -13,36 +13,30 @@ interface LoginFormData {
   rememberMe: boolean;
 }
 
-const demoCredentials = [
+const demoHints = [
   {
     id: 'demo-admin',
     role: 'Admin',
     email: 'admin@indentrade.com.ph',
     password: 'GSMSadmin@2026',
-    description: 'Full system access',
+    description: 'Default admin — created on first run',
     color: 'bg-blue-100 text-blue-700 border-blue-200',
-    name: 'Ana Reyes',
-    initials: 'AR',
   },
   {
     id: 'demo-manager',
     role: 'Manager',
     email: 'manager@indentrade.com.ph',
     password: 'GSMSmgr@2026',
-    description: 'Operations oversight',
+    description: 'Create this account in User Management first',
     color: 'bg-violet-100 text-violet-700 border-violet-200',
-    name: 'Marco Santos',
-    initials: 'MS',
   },
   {
     id: 'demo-tech',
     role: 'Field Technician',
     email: 'technician@indentrade.com.ph',
     password: 'GSMStech@2026',
-    description: 'Assigned jobs only',
+    description: 'Create this account in User Management first',
     color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-    name: 'Rico Dela Cruz',
-    initials: 'RD',
   },
 ];
 
@@ -65,33 +59,40 @@ export default function LoginForm() {
     setAuthError('');
     setIsLoading(true);
 
-    await new Promise((r) => setTimeout(r, 900));
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email, password: data.password }),
+      });
 
-    const valid = demoCredentials.find(
-      (c) => c.email === data.email && c.password === data.password
-    );
+      const json = await res.json();
 
-    if (!valid) {
+      if (!res.ok) {
+        setAuthError(json.error ?? 'Login failed. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      const user = json.user;
+      saveAuthUser({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+        initials: getInitials(user.name),
+      });
+
+      router.push('/');
+    } catch {
+      setAuthError('Unable to connect. Please try again.');
       setIsLoading(false);
-      setAuthError('Invalid credentials — use the demo accounts below to sign in.');
-      return;
     }
-
-    // Save user to localStorage so Topbar/Sidebar can read it
-    saveAuthUser({
-      email: valid.email,
-      role: valid.role,
-      name: valid.name,
-      initials: valid.initials,
-    });
-
-    setIsLoading(false);
-    router.push('/');
   };
 
-  const autofill = (cred: (typeof demoCredentials)[0]) => {
-    setValue('email', cred.email);
-    setValue('password', cred.password);
+  const autofill = (hint: (typeof demoHints)[0]) => {
+    setValue('email', hint.email);
+    setValue('password', hint.password);
     setAuthError('');
   };
 
@@ -224,26 +225,26 @@ export default function LoginForm() {
         <div className="mt-7 pt-6 border-t border-border">
           <div className="flex items-center gap-2 mb-3">
             <Icon name="InformationCircleIcon" size={14} className="text-muted-foreground flex-shrink-0" />
-            <p className="text-2xs text-muted-foreground font-500">Demo accounts — click to autofill credentials</p>
+            <p className="text-2xs text-muted-foreground font-500">Default accounts — click to autofill credentials</p>
           </div>
           <div className="space-y-2">
-            {demoCredentials.map((cred) => (
+            {demoHints.map((hint) => (
               <button
-                key={cred.id}
+                key={hint.id}
                 type="button"
-                onClick={() => autofill(cred)}
+                onClick={() => autofill(hint)}
                 className="
                   w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border
                   hover:border-primary/40 hover:bg-muted/60 transition-all duration-150 text-left
                   active:scale-[0.99]
                 "
               >
-                <span className={`text-2xs font-700 px-2 py-0.5 rounded-md border flex-shrink-0 ${cred.color}`}>
-                  {cred.role}
+                <span className={`text-2xs font-700 px-2 py-0.5 rounded-md border flex-shrink-0 ${hint.color}`}>
+                  {hint.role}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-500 text-foreground truncate">{cred.email}</p>
-                  <p className="text-2xs text-muted-foreground">{cred.description}</p>
+                  <p className="text-xs font-500 text-foreground truncate">{hint.email}</p>
+                  <p className="text-2xs text-muted-foreground">{hint.description}</p>
                 </div>
                 <Icon name="ArrowRightIcon" size={12} className="text-muted-foreground flex-shrink-0" />
               </button>

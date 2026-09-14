@@ -376,3 +376,14 @@ model Setting {
   notes     String   @default("")
   updatedAt DateTime @updatedAt
 }
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("FIELD_TECHNICIAN")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
