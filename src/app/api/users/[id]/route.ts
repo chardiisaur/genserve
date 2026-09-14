@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin, isNextResponse } from '@/lib/rbac';
 import { getSession } from '@/lib/session';
+
+async function hashPw(password: string): Promise<string> {
+  const bcrypt = await import('bcryptjs');
+  const mod = (bcrypt as any).default ?? bcrypt;
+  return mod.hash(password, 12);
+}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAdmin();
@@ -79,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (newPassword !== undefined && newPassword.trim()) {
       if (newPassword.length < 6) return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
       if (newPassword !== confirmPassword) return NextResponse.json({ error: 'Password confirmation does not match.' }, { status: 400 });
-      updateData.passwordHash = await bcrypt.hash(newPassword, 12);
+      updateData.passwordHash = await hashPw(newPassword);
     }
 
     const updated = await prisma.user.update({

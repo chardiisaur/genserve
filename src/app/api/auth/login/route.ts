@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { getSession } from '@/lib/session';
+
+async function comparePw(plain: string, hash: string): Promise<boolean> {
+  const bcrypt = await import('bcryptjs');
+  const mod = (bcrypt as any).default ?? bcrypt;
+  return mod.compare(plain, hash);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+    const passwordMatch = await comparePw(password, user.passwordHash);
     if (!passwordMatch) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }

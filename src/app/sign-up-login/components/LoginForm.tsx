@@ -19,7 +19,7 @@ const demoHints = [
     role: 'Admin',
     email: 'admin@indentrade.com.ph',
     password: 'GSMSadmin@2026',
-    description: 'Full system access',
+    description: 'Default admin — created on first run',
     color: 'bg-blue-100 text-blue-700 border-blue-200',
   },
   {
@@ -27,7 +27,7 @@ const demoHints = [
     role: 'Manager',
     email: 'manager@indentrade.com.ph',
     password: 'GSMSmgr@2026',
-    description: 'Operations oversight',
+    description: 'Create this account in User Management first',
     color: 'bg-violet-100 text-violet-700 border-violet-200',
   },
   {
@@ -35,7 +35,7 @@ const demoHints = [
     role: 'Field Technician',
     email: 'technician@indentrade.com.ph',
     password: 'GSMStech@2026',
-    description: 'Assigned jobs only',
+    description: 'Create this account in User Management first',
     color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   },
 ];

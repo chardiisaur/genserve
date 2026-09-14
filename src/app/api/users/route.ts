@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { requireAdmin, isNextResponse } from '@/lib/rbac';
+
+async function hashPw(password: string): Promise<string> {
+  const bcrypt = await import('bcryptjs');
+  const mod = (bcrypt as any).default ?? bcrypt;
+  return mod.hash(password, 12);
+}
 
 export async function GET() {
   const authResult = await requireAdmin();
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email already exists.' }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await hashPw(password);
 
     const user = await prisma.user.create({
       data: {
