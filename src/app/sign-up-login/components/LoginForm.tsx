@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/ui/AppIcon';
 import AppLogo from '@/components/ui/AppLogo';
+import { saveAuthUser } from '@/lib/auth';
 
 interface LoginFormData {
   email: string;
@@ -20,6 +21,8 @@ const demoCredentials = [
     password: 'GSMSadmin@2026',
     description: 'Full system access',
     color: 'bg-blue-100 text-blue-700 border-blue-200',
+    name: 'Ana Reyes',
+    initials: 'AR',
   },
   {
     id: 'demo-manager',
@@ -28,6 +31,8 @@ const demoCredentials = [
     password: 'GSMSmgr@2026',
     description: 'Operations oversight',
     color: 'bg-violet-100 text-violet-700 border-violet-200',
+    name: 'Marco Santos',
+    initials: 'MS',
   },
   {
     id: 'demo-tech',
@@ -36,6 +41,8 @@ const demoCredentials = [
     password: 'GSMStech@2026',
     description: 'Assigned jobs only',
     color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    name: 'Rico Dela Cruz',
+    initials: 'RD',
   },
 ];
 
@@ -58,8 +65,7 @@ export default function LoginForm() {
     setAuthError('');
     setIsLoading(true);
 
-    // Backend integration: POST /api/auth/login with { email, password }
-    await new Promise((r) => setTimeout(r, 1100));
+    await new Promise((r) => setTimeout(r, 900));
 
     const valid = demoCredentials.find(
       (c) => c.email === data.email && c.password === data.password
@@ -70,6 +76,14 @@ export default function LoginForm() {
       setAuthError('Invalid credentials — use the demo accounts below to sign in.');
       return;
     }
+
+    // Save user to localStorage so Topbar/Sidebar can read it
+    saveAuthUser({
+      email: valid.email,
+      role: valid.role,
+      name: valid.name,
+      initials: valid.initials,
+    });
 
     setIsLoading(false);
     router.push('/');
@@ -139,9 +153,6 @@ export default function LoginForm() {
               <label htmlFor="password" className="block text-xs font-500 text-foreground">
                 Password
               </label>
-              <button type="button" className="text-2xs text-primary hover:underline font-500">
-                Forgot password?
-              </button>
             </div>
             <div className="relative">
               <input
