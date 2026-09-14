@@ -1,0 +1,378 @@
+// This is your Prisma schema file for GenServe GSMS
+// Local SQLite database — no cloud dependency
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./gsms.db"
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  clientId       String   @unique
+  clientName     String
+  accountType    String   @default("Corporate")
+  industry       String   @default("")
+  primaryContact String   @default("")
+  contactNo      String   @default("")
+  email          String   @default("")
+  billingAddress String   @default("")
+  remarks        String   @default("")
+  status         String   @default("Active")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sites        Site[]
+  generators   Generator[]
+  serviceJobs  ServiceJob[]
+  pmsRecords   PmsRecord[]
+  deployments  Deployment[]
+  quotations   QuotationBilling[]
+}
+
+model Site {
+  id                  String   @id @default(cuid())
+  siteId              String   @unique
+  clientId            String
+  siteName            String
+  siteAddress         String   @default("")
+  siteContact         String   @default("")
+  contactNo           String   @default("")
+  operatingHours      String   @default("")
+  accessRequirements  String   @default("")
+  generatorRoomNotes  String   @default("")
+  remarks             String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  client      Client       @relation(fields: [clientId], references: [clientId])
+  generators  Generator[]
+  serviceJobs ServiceJob[]
+  pmsRecords  PmsRecord[]
+  deployments Deployment[]
+}
+
+model Generator {
+  id                   String   @id @default(cuid())
+  generatorId          String   @unique
+  clientId             String
+  siteId               String
+  assetNo              String   @default("")
+  brand                String   @default("")
+  model                String   @default("")
+  ratedKw              Float    @default(0)
+  ratedKva             Float    @default(0)
+  voltage              Int      @default(0)
+  phase                String   @default("Three-Phase")
+  frequencyHz          Int      @default(60)
+  rpm                  Int      @default(1800)
+  engineBrand          String   @default("")
+  engineModel          String   @default("")
+  engineSerialNo       String   @default("")
+  alternatorBrand      String   @default("")
+  alternatorModel      String   @default("")
+  alternatorSerialNo   String   @default("")
+  controllerBrand      String   @default("")
+  controllerModel      String   @default("")
+  atsBrandModel        String   @default("")
+  breakerRatingA       Int      @default(0)
+  fuelType             String   @default("Diesel")
+  installationDate     String   @default("")
+  warrantyExpiry       String   @default("")
+  currentRunningHours  Float    @default(0)
+  pmsIntervalHours     Int      @default(250)
+  lastPmsDate          String   @default("")
+  nextPmsDueDate       String   @default("")
+  synchronizingCapable String   @default("No")
+  status               String   @default("Active")
+  remarks              String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  client      Client       @relation(fields: [clientId], references: [clientId])
+  site        Site         @relation(fields: [siteId], references: [siteId])
+  serviceJobs ServiceJob[]
+  pmsRecords  PmsRecord[]
+  partsUsed   PartUsed[]
+}
+
+model Technician {
+  id                   String   @id @default(cuid())
+  technicianId         String   @unique
+  technicianName       String
+  position             String   @default("")
+  contactNo            String   @default("")
+  skillLevel           String   @default("Junior")
+  engineExpertise      String   @default("")
+  controllerExpertise  String   @default("")
+  electricalExpertise  String   @default("")
+  mechanicalExpertise  String   @default("")
+  availability         String   @default("Available")
+  certifications       String   @default("")
+  remarks              String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  serviceJobsLead       ServiceJob[]  @relation("LeadTechnician")
+  serviceJobsAdditional ServiceJob[]  @relation("AdditionalTechnician")
+  pmsRecords            PmsRecord[]
+  partsUsed             PartUsed[]
+  expenses              Expense[]
+  deployments           Deployment[]
+}
+
+model ServiceJob {
+  id                      String   @id @default(cuid())
+  jobOrderNo              String   @unique
+  requestDate             String
+  clientId                String
+  siteId                  String
+  generatorId             String
+  serviceType             String
+  problem                 String   @default("")
+  priority                String   @default("Normal")
+  scheduledDate           String   @default("")
+  status                  String   @default("Open")
+  leadTechnicianId        String   @default("")
+  additionalTechnicianId  String   @default("")
+  startDate               String   @default("")
+  completionDate          String   @default("")
+  runningHours            Float    @default(0)
+  findings                String   @default("")
+  workPerformed           String   @default("")
+  testingResults          String   @default("")
+  recommendations         String   @default("")
+  partsMaterialsSummary   String   @default("")
+  customerRepresentative  String   @default("")
+  customerContact         String   @default("")
+  serviceReportNo         String   @default("")
+  quotationNo             String   @default("")
+  billingStatus           String   @default("Pending")
+  remarks                 String   @default("")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  client              Client             @relation(fields: [clientId], references: [clientId])
+  site                Site               @relation(fields: [siteId], references: [siteId])
+  generator           Generator          @relation(fields: [generatorId], references: [generatorId])
+  leadTechnician      Technician?        @relation("LeadTechnician", fields: [leadTechnicianId], references: [technicianId])
+  additionalTechnician Technician?       @relation("AdditionalTechnician", fields: [additionalTechnicianId], references: [technicianId])
+  partsUsed           PartUsed[]
+  expenses            Expense[]
+  deployments         Deployment[]
+  quotations          QuotationBilling[]
+  fieldLogs           FieldLog[]
+}
+
+model PmsRecord {
+  id              String   @id @default(cuid())
+  pmsRecordId     String   @unique
+  generatorId     String
+  clientId        String
+  siteId          String
+  pmsType         String   @default("250-Hour PMS")
+  pmsDate         String
+  runningHours    Float    @default(0)
+  nextPmsDate     String   @default("")
+  nextPmsHours    Int      @default(0)
+  technicianId    String   @default("")
+  pmsScope        String   @default("")
+  pmsStatus       String   @default("Scheduled")
+  engineOil       String   @default("OK")
+  oilFilter       String   @default("OK")
+  fuelFilter      String   @default("OK")
+  waterSeparator  String   @default("OK")
+  airFilter       String   @default("OK")
+  coolant         String   @default("OK")
+  belts           String   @default("OK")
+  hoses           String   @default("OK")
+  battery         String   @default("OK")
+  batteryCharger  String   @default("OK")
+  radiatorCooling String   @default("OK")
+  fuelSystem      String   @default("OK")
+  exhaust         String   @default("OK")
+  turbocharger    String   @default("OK")
+  alternator      String   @default("OK")
+  avr             String   @default("OK")
+  controller      String   @default("OK")
+  breakerAts      String   @default("OK")
+  emergencyStop   String   @default("OK")
+  loadTest        String   @default("OK")
+  generalCondition String  @default("Good")
+  recommendations String   @default("")
+  remarks         String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  generator  Generator  @relation(fields: [generatorId], references: [generatorId])
+  client     Client     @relation(fields: [clientId], references: [clientId])
+  site       Site       @relation(fields: [siteId], references: [siteId])
+  technician Technician? @relation(fields: [technicianId], references: [technicianId])
+}
+
+model PartInventory {
+  id              String   @id @default(cuid())
+  partId          String   @unique
+  partNo          String
+  partDescription String
+  brand           String   @default("")
+  applicableEngine String  @default("")
+  supplier        String   @default("")
+  unit            String   @default("pc")
+  unitCost        Float    @default(0)
+  sellingPrice    Float    @default(0)
+  stockQty        Int      @default(0)
+  minimumStock    Int      @default(0)
+  storageLocation String   @default("")
+  reorderStatus   String   @default("OK")
+  remarks         String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  partsUsed PartUsed[]
+}
+
+model PartUsed {
+  id              String   @id @default(cuid())
+  usageId         String   @unique
+  jobOrderNo      String
+  generatorId     String
+  partId          String
+  partNo          String   @default("")
+  partDescription String   @default("")
+  qty             Int      @default(1)
+  unitCost        Float    @default(0)
+  sellingPrice    Float    @default(0)
+  totalCost       Float    @default(0)
+  totalSelling    Float    @default(0)
+  dateUsed        String
+  technicianId    String   @default("")
+  remarks         String   @default("")
+  createdAt       DateTime @default(now())
+
+  serviceJob  ServiceJob    @relation(fields: [jobOrderNo], references: [jobOrderNo])
+  generator   Generator     @relation(fields: [generatorId], references: [generatorId])
+  part        PartInventory @relation(fields: [partId], references: [partId])
+  technician  Technician?   @relation(fields: [technicianId], references: [technicianId])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  expenseId   String   @unique
+  jobOrderNo  String
+  date        String
+  technicianId String  @default("")
+  expenseType String   @default("Transport")
+  description String   @default("")
+  amount      Float    @default(0)
+  receiptRef  String   @default("")
+  approvedBy  String   @default("")
+  remarks     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  serviceJob ServiceJob  @relation(fields: [jobOrderNo], references: [jobOrderNo])
+  technician Technician? @relation(fields: [technicianId], references: [technicianId])
+}
+
+model Deployment {
+  id             String   @id @default(cuid())
+  deploymentId   String   @unique
+  jobOrderNo     String
+  clientId       String
+  siteId         String
+  destination    String   @default("")
+  technicianId   String
+  departureDate  String
+  returnDate     String   @default("")
+  transportation String   @default("")
+  accommodation  String   @default("")
+  purpose        String   @default("")
+  status         String   @default("Planned")
+  remarks        String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  serviceJob ServiceJob @relation(fields: [jobOrderNo], references: [jobOrderNo])
+  client     Client     @relation(fields: [clientId], references: [clientId])
+  site       Site       @relation(fields: [siteId], references: [siteId])
+  technician Technician @relation(fields: [technicianId], references: [technicianId])
+}
+
+model QuotationBilling {
+  id             String   @id @default(cuid())
+  transactionId  String   @unique
+  jobOrderNo     String
+  clientId       String
+  quotationNo    String   @default("")
+  quotationDate  String   @default("")
+  invoiceNo      String   @default("")
+  invoiceDate    String   @default("")
+  labor          Float    @default(0)
+  parts          Float    @default(0)
+  transportation Float    @default(0)
+  accommodation  Float    @default(0)
+  otherCharges   Float    @default(0)
+  discount       Float    @default(0)
+  totalAmount    Float    @default(0)
+  billingStatus  String   @default("Unpaid")
+  paymentDate    String   @default("")
+  remarks        String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  serviceJob ServiceJob @relation(fields: [jobOrderNo], references: [jobOrderNo])
+  client     Client     @relation(fields: [clientId], references: [clientId])
+}
+
+model EngineModel {
+  id                    String   @id @default(cuid())
+  modelId               String   @unique
+  brand                 String
+  engineModel           String
+  cylinders             Int      @default(0)
+  displacement          String   @default("")
+  typicalKwRange        String   @default("")
+  typicalKvaRange       String   @default("")
+  oilCapacity           String   @default("")
+  coolantCapacity       String   @default("")
+  recommendedPmsInterval Int     @default(250)
+  notes                 String   @default("")
+  createdAt             DateTime @default(now())
+}
+
+model ServiceType {
+  id                  String   @id @default(cuid())
+  serviceTypeId       String   @unique
+  serviceType         String
+  description         String   @default("")
+  defaultPriority     String   @default("Normal")
+  recommendedReport   String   @default("")
+  createdAt           DateTime @default(now())
+}
+
+model FieldLog {
+  id          String   @id @default(cuid())
+  jobOrderNo  String
+  timestamp   DateTime @default(now())
+  loggedBy    String
+  logType     String   @default("Work Log")
+  description String
+  findings    String   @default("")
+  partsUsed   String   @default("")
+  statusUpdate String  @default("")
+  createdAt   DateTime @default(now())
+
+  serviceJob ServiceJob @relation(fields: [jobOrderNo], references: [jobOrderNo])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  notes     String   @default("")
+  updatedAt DateTime @updatedAt
+}

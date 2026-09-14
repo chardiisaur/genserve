@@ -60,7 +60,7 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
     group: 'Finance',
     items: [
       { id: 'nav-expenses', label: 'Expenses', icon: 'BanknotesIcon', href: '/expenses' },
-      { id: 'nav-billing', label: 'Quotations & Billing', icon: 'DocumentCurrencyDollarIcon', href: '/billing' },
+      { id: 'nav-billing', label: 'Billing & Invoicing', icon: 'DocumentCurrencyDollarIcon', href: '/billing' },
     ],
   },
   {
