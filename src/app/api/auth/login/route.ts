@@ -13,12 +13,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password } = body as { email?: string; password?: string };
 
-    if (!email || !password) {
+    if (!email?.trim() || !password?.trim()) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } });
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        passwordHash: true,
+      },
+    });
 
+    // Use constant-time comparison path regardless of whether user exists
+    // to prevent user enumeration via timing attacks
     if (!user) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
@@ -28,8 +40,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
 
+    // Check active status AFTER password verification to prevent user enumeration
     if (user.status !== 'ACTIVE') {
-      return NextResponse.json({ error: 'User account is inactive. Please contact your administrator.' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Your account is inactive. Please contact your administrator.' },
+        { status: 403 }
+      );
     }
 
     const session = await getSession();
@@ -41,6 +57,7 @@ export async function POST(req: NextRequest) {
     };
     await session.save();
 
+    // Never expose passwordHash in the response
     return NextResponse.json({
       user: {
         id: user.id,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -17,11 +17,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const body = await req.json();
+    if (body.partDescription !== undefined && !body.partDescription?.trim()) {
+      return NextResponse.json({ error: 'partDescription cannot be empty' }, { status: 400 });
+    }
+    if (body.partNo !== undefined && !body.partNo?.trim()) {
+      return NextResponse.json({ error: 'partNo cannot be empty' }, { status: 400 });
+    }
+    if (body.stockQty !== undefined && (isNaN(Number(body.stockQty)) || Number(body.stockQty) < 0)) {
+      return NextResponse.json({ error: 'stockQty must be a non-negative number' }, { status: 400 });
+    }
+    if (body.minimumStock !== undefined && (isNaN(Number(body.minimumStock)) || Number(body.minimumStock) < 0)) {
+      return NextResponse.json({ error: 'minimumStock must be a non-negative number' }, { status: 400 });
+    }
     const part = await prisma.partInventory.update({ where: { partId: id }, data: body });
     return NextResponse.json(part);
   } catch (err: unknown) {
@@ -33,7 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;

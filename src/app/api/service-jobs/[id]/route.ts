@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse, ROLES } from '@/lib/rbac';
 
 const VALID_STATUSES = ['Open', 'In Progress', 'Completed', 'Closed', 'Cancelled'];
 const VALID_PRIORITIES = ['Normal', 'High', 'Critical'];
 const VALID_BILLING_STATUSES = ['Pending', 'Quoted', 'Approved', 'Invoiced', 'Paid', 'Cancelled'];
+
+// Fields a FIELD_TECHNICIAN is allowed to update on their assigned jobs
+const FIELD_TECH_ALLOWED_FIELDS = new Set([
+  'status', 'startDate', 'completionDate', 'runningHours',
+  'findings', 'workPerformed', 'testingResults', 'recommendations',
+  'partsMaterialsSummary', 'customerRepresentative', 'customerContact',
+  'serviceReportNo', 'remarks',
+]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -22,6 +30,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // FIELD_TECHNICIAN can only view jobs assigned to them
+    if (
+      auth.role === ROLES.FIELD_TECHNICIAN &&
+      job.leadTechnicianId !== auth.id &&
+      job.additionalTechnicianId !== auth.id
+    ) {
+      return NextResponse.json({ error: 'Forbidden — you are not assigned to this job' }, { status: 403 });
+    }
+
     return NextResponse.json({
       ...job,
       clientName: job.client?.clientName ?? job.clientId,
@@ -45,7 +63,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const body = await req.json();
 
-    // Validate status/priority/billingStatus if provided
+    const existing = await prisma.serviceJob.findUnique({ where: { jobOrderNo: id } });
+    if (!existing) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
+
+    // FIELD_TECHNICIAN: can only update their own assigned jobs, and only allowed fields
+    if (auth.role === ROLES.FIELD_TECHNICIAN) {
+      if (existing.leadTechnicianId !== auth.id && existing.additionalTechnicianId !== auth.id) {
+        return NextResponse.json({ error: 'Forbidden — you are not assigned to this job' }, { status: 403 });
+      }
+      // Strip any fields not in the allowed set
+      const disallowedFields = Object.keys(body).filter(
+        (k) => !FIELD_TECH_ALLOWED_FIELDS.has(k)
+      );
+      if (disallowedFields.length > 0) {
+        return NextResponse.json(
+          { error: `Forbidden — you cannot modify: ${disallowedFields.join(', ')}` },
+          { status: 403 }
+        );
+      }
+    }
+
     if (body.status && !VALID_STATUSES.includes(body.status)) {
       return NextResponse.json({ error: `Invalid status: ${body.status}` }, { status: 400 });
     }
@@ -58,9 +95,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // If clientId/siteId/generatorId are being changed, validate relationships
     if (body.clientId || body.siteId || body.generatorId) {
-      const existing = await prisma.serviceJob.findUnique({ where: { jobOrderNo: id } });
-      if (!existing) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
-
       const clientId = body.clientId || existing.clientId;
       const siteId = body.siteId || existing.siteId;
       const generatorId = body.generatorId || existing.generatorId;
@@ -82,7 +116,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     }
 
-    // Validate technicians if provided
     const leadTechId = body.leadTechnicianId !== undefined ? (body.leadTechnicianId || null) : undefined;
     const addlTechId = body.additionalTechnicianId !== undefined ? (body.additionalTechnicianId || null) : undefined;
 
@@ -95,22 +128,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!tech) return NextResponse.json({ error: 'Invalid additional technician — technician not found.' }, { status: 400 });
     }
 
-    // Strip frontend-only / read-only fields
     const {
-      id: _id,
-      jobOrderNo: _jo,
-      clientName: _cn,
-      siteName: _sn,
-      generatorName: _gn,
-      leadTechnicianName: _ltn,
-      additionalTechnicianName: _atn,
-      createdAt: _ca,
-      updatedAt: _ua,
-      client: _c,
-      site: _s,
-      generator: _g,
-      leadTechnician: _lt,
-      additionalTechnician: _at,
+      id: _id, jobOrderNo: _jo, clientName: _cn, siteName: _sn, generatorName: _gn,
+      leadTechnicianName: _ltn, additionalTechnicianName: _atn,
+      createdAt: _ca, updatedAt: _ua,
+      client: _c, site: _s, generator: _g, leadTechnician: _lt, additionalTechnician: _at,
       ...cleanBody
     } = body;
 
@@ -130,7 +152,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  // FIELD_TECHNICIAN cannot delete jobs
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;

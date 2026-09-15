@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe technician ID */
 function newTechnicianId(): string {
@@ -20,11 +20,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
-    if (!body.technicianName) {
+    if (!body.technicianName?.trim()) {
       return NextResponse.json({ error: 'technicianName is required' }, { status: 400 });
     }
     const tech = await prisma.technician.create({

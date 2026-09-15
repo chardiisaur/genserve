@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse, ROLES } from '@/lib/rbac';
+
+// Fields a FIELD_TECHNICIAN is allowed to update on their assigned PMS records
+const FIELD_TECH_PMS_ALLOWED_FIELDS = new Set([
+  'pmsStatus', 'runningHours', 'nextPmsHours', 'nextPmsDate',
+  'engineOil', 'oilFilter', 'fuelFilter', 'waterSeparator', 'airFilter',
+  'coolant', 'belts', 'hoses', 'battery', 'batteryCharger', 'radiatorCooling',
+  'fuelSystem', 'exhaust', 'turbocharger', 'alternator', 'avr', 'controller',
+  'breakerAts', 'emergencyStop', 'loadTest', 'generalCondition',
+  'recommendations', 'remarks', 'pmsScope',
+]);
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -17,6 +27,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
     if (!record) return NextResponse.json({ error: 'PMS record not found' }, { status: 404 });
+
+    // FIELD_TECHNICIAN can only view their assigned PMS records
+    if (auth.role === ROLES.FIELD_TECHNICIAN && record.technicianId !== auth.id) {
+      return NextResponse.json({ error: 'Forbidden — you are not assigned to this PMS record' }, { status: 403 });
+    }
+
     return NextResponse.json(record);
   } catch (err: unknown) {
     console.error('[PMS GET BY ID ERROR]', err);
@@ -36,7 +52,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     if (!existing) return NextResponse.json({ error: 'PMS record not found' }, { status: 404 });
 
-    // If changing generator/client/site, validate relationships
+    // FIELD_TECHNICIAN: can only update their assigned PMS records, and only allowed fields
+    if (auth.role === ROLES.FIELD_TECHNICIAN) {
+      if (existing.technicianId !== auth.id) {
+        return NextResponse.json({ error: 'Forbidden — you are not assigned to this PMS record' }, { status: 403 });
+      }
+      const disallowedFields = Object.keys(body).filter(
+        (k) => !FIELD_TECH_PMS_ALLOWED_FIELDS.has(k)
+      );
+      if (disallowedFields.length > 0) {
+        return NextResponse.json(
+          { error: `Forbidden — you cannot modify: ${disallowedFields.join(', ')}` },
+          { status: 403 }
+        );
+      }
+    }
+
     const newGeneratorId = body.generatorId ?? existing.generatorId;
     const newClientId = body.clientId ?? existing.clientId;
     const newSiteId = body.siteId ?? existing.siteId;
@@ -48,13 +79,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       if (generator.siteId !== newSiteId) return NextResponse.json({ error: 'Generator does not belong to the selected site.' }, { status: 400 });
     }
 
-    // Validate technician if provided
     if (body.technicianId) {
       const tech = await prisma.technician.findUnique({ where: { technicianId: body.technicianId } });
       if (!tech) return NextResponse.json({ error: 'Technician not found.' }, { status: 400 });
     }
 
-    // Strip frontend-only / computed fields
     const {
       id: _id, pmsRecordId: _pmsId, createdAt: _ca, updatedAt: _ua,
       clientName, siteName, generatorLabel, technicianName, daysUntilNextPms, isUpcoming,
@@ -62,7 +91,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...updateData
     } = body;
 
-    // Ensure technicianId is null not empty string
     if ('technicianId' in updateData) {
       updateData.technicianId = updateData.technicianId || null;
     }
@@ -80,7 +108,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  // FIELD_TECHNICIAN cannot delete PMS records
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
@@ -89,7 +118,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     });
     if (!existing) return NextResponse.json({ error: 'PMS record not found' }, { status: 404 });
 
-    // Delete the record — no child tables reference PmsRecord in the current schema
     await prisma.pmsRecord.delete({ where: { id: existing.id } });
 
     return NextResponse.json({ success: true, deletedId: existing.id, deletedPmsRecordId: existing.pmsRecordId });

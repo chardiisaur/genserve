@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse, ROLES } from '@/lib/rbac';
 
 /** Collision-safe PMS record ID */
 function newPmsRecordId(): string {
@@ -22,6 +22,11 @@ export async function GET(req: NextRequest) {
     if (generatorFilter) where.generatorId = generatorFilter;
     if (technicianFilter) where.technicianId = technicianFilter;
 
+    // FIELD_TECHNICIAN: only see PMS records assigned to them
+    if (auth.role === ROLES.FIELD_TECHNICIAN) {
+      where.technicianId = auth.id;
+    }
+
     const records = await prisma.pmsRecord.findMany({
       where,
       orderBy: { pmsDate: 'desc' },
@@ -33,7 +38,6 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Auto-calculate overdue status: if pmsStatus is Scheduled and nextPmsDate is in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -46,7 +50,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Days until next PMS
       let daysUntilNextPms: number | null = null;
       if (r.nextPmsDate) {
         const nextDate = new Date(r.nextPmsDate);
@@ -67,7 +70,6 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Apply search after enrichment (search on names)
     let result = enriched;
     if (search) {
       const q = search.toLowerCase();
@@ -90,29 +92,25 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
 
-    // Required field validation
     if (!body.generatorId || !body.clientId || !body.siteId || !body.pmsDate) {
       return NextResponse.json({ error: 'generatorId, clientId, siteId, and pmsDate are required' }, { status: 400 });
     }
 
-    // Validate generator exists and belongs to the given client/site
     const generator = await prisma.generator.findUnique({ where: { generatorId: body.generatorId } });
     if (!generator) return NextResponse.json({ error: 'Generator not found.' }, { status: 400 });
     if (generator.clientId !== body.clientId) return NextResponse.json({ error: 'Generator does not belong to the selected client.' }, { status: 400 });
     if (generator.siteId !== body.siteId) return NextResponse.json({ error: 'Generator does not belong to the selected site.' }, { status: 400 });
 
-    // Validate technician if provided
     if (body.technicianId) {
       const tech = await prisma.technician.findUnique({ where: { technicianId: body.technicianId } });
       if (!tech) return NextResponse.json({ error: 'Technician not found.' }, { status: 400 });
     }
 
-    // Strip any frontend-only fields
     const {
       clientName, siteName, generatorLabel, technicianName, daysUntilNextPms, isUpcoming,
       generator: _gen, client: _cli, site: _sit, technician: _tech,

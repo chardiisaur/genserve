@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse, ROLES } from '@/lib/rbac';
 
 /**
  * Generates a collision-safe Job Order number in the format JO-YYYY-0001.
- * Uses a dedicated JobOrderSequence table with an atomic increment to prevent
- * duplicate JO numbers even under concurrent requests.
  */
 async function generateJobOrderNo(): Promise<string> {
   const year = new Date().getFullYear();
@@ -30,7 +28,19 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const clientId = searchParams.get('clientId');
-    const where = clientId ? { clientId } : {};
+
+    // FIELD_TECHNICIAN: only see jobs assigned to them
+    let where: Record<string, unknown> = clientId ? { clientId } : {};
+    if (auth.role === ROLES.FIELD_TECHNICIAN) {
+      where = {
+        ...where,
+        OR: [
+          { leadTechnicianId: auth.id },
+          { additionalTechnicianId: auth.id },
+        ],
+      };
+    }
+
     const jobs = await prisma.serviceJob.findMany({
       where,
       orderBy: { requestDate: 'desc' },
@@ -43,7 +53,6 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Flatten related names into the response
     const result = jobs.map((j) => ({
       ...j,
       clientName: j.client?.clientName ?? j.clientId,
@@ -63,13 +72,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  // Only MANAGER and ADMIN can create new service jobs
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     const { requestDate, clientId, siteId, generatorId, serviceType } = body;
 
-    // Required field validation
     if (!requestDate || !clientId || !siteId || !generatorId || !serviceType) {
       return NextResponse.json(
         { error: 'Missing required fields: requestDate, clientId, siteId, generatorId, serviceType' },
@@ -77,7 +86,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate status/priority/billingStatus values
     if (body.status && !VALID_STATUSES.includes(body.status)) {
       return NextResponse.json({ error: `Invalid status: ${body.status}` }, { status: 400 });
     }
@@ -88,30 +96,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Invalid billingStatus: ${body.billingStatus}` }, { status: 400 });
     }
 
-    // Server-side relationship validation
     const [client, site, generator] = await Promise.all([
       prisma.client.findUnique({ where: { clientId } }),
       prisma.site.findUnique({ where: { siteId } }),
       prisma.generator.findUnique({ where: { generatorId } }),
     ]);
 
-    if (!client) {
-      return NextResponse.json({ error: 'Invalid client — client not found.' }, { status: 400 });
-    }
-    if (!site) {
-      return NextResponse.json({ error: 'Invalid site — site not found.' }, { status: 400 });
-    }
+    if (!client) return NextResponse.json({ error: 'Invalid client — client not found.' }, { status: 400 });
+    if (!site) return NextResponse.json({ error: 'Invalid site — site not found.' }, { status: 400 });
     if (site.clientId !== clientId) {
       return NextResponse.json({ error: 'Invalid site — site does not belong to the selected client.' }, { status: 400 });
     }
-    if (!generator) {
-      return NextResponse.json({ error: 'Invalid generator — generator not found.' }, { status: 400 });
-    }
+    if (!generator) return NextResponse.json({ error: 'Invalid generator — generator not found.' }, { status: 400 });
     if (generator.siteId !== siteId) {
       return NextResponse.json({ error: 'Invalid generator — generator does not belong to the selected site.' }, { status: 400 });
     }
 
-    // Validate technicians if provided
     const leadTechId = body.leadTechnicianId || null;
     const addlTechId = body.additionalTechnicianId || null;
 
@@ -124,30 +124,16 @@ export async function POST(req: NextRequest) {
       if (!tech) return NextResponse.json({ error: 'Invalid additional technician — technician not found.' }, { status: 400 });
     }
 
-    // Validate service type
     const st = await prisma.serviceType.findFirst({ where: { serviceType } });
-    if (!st) {
-      return NextResponse.json({ error: `Invalid service type: ${serviceType}` }, { status: 400 });
-    }
+    if (!st) return NextResponse.json({ error: `Invalid service type: ${serviceType}` }, { status: 400 });
 
     const jobOrderNo = await generateJobOrderNo();
 
-    // Strip frontend-only fields and build clean data object
     const {
-      id: _id,
-      jobOrderNo: _jo,
-      clientName: _cn,
-      siteName: _sn,
-      generatorName: _gn,
-      leadTechnicianName: _ltn,
-      additionalTechnicianName: _atn,
-      createdAt: _ca,
-      updatedAt: _ua,
-      client: _c,
-      site: _s,
-      generator: _g,
-      leadTechnician: _lt,
-      additionalTechnician: _at,
+      id: _id, jobOrderNo: _jo, clientName: _cn, siteName: _sn, generatorName: _gn,
+      leadTechnicianName: _ltn, additionalTechnicianName: _atn,
+      createdAt: _ca, updatedAt: _ua,
+      client: _c, site: _s, generator: _g, leadTechnician: _lt, additionalTechnician: _at,
       ...cleanBody
     } = body;
 
