@@ -11,8 +11,31 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if (isNextResponse(auth)) return auth;
   try {
-    const technicians = await prisma.technician.findMany({ orderBy: { technicianName: 'asc' } });
-    return NextResponse.json(technicians);
+    const { searchParams } = new URL(req.url);
+    const availability = searchParams.get('availability');
+    const where = availability ? { availability } : {};
+    const technicians = await prisma.technician.findMany({
+      where,
+      orderBy: { technicianName: 'asc' },
+      include: {
+        _count: {
+          select: {
+            serviceJobsLead: true,
+            pmsRecords: true,
+            deployments: true,
+            expenses: true,
+            partsUsed: true,
+          },
+        },
+      },
+    });
+    const result = technicians.map((t) => ({
+      ...t,
+      leadJobCount: t._count.serviceJobsLead,
+      pmsCount: t._count.pmsRecords,
+      deploymentCount: t._count.deployments,
+    }));
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error('[TECHNICIAN GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch technicians' }, { status: 500 });

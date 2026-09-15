@@ -13,8 +13,24 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const clientId = searchParams.get('clientId');
     const where = clientId ? { clientId } : {};
-    const sites = await prisma.site.findMany({ where, orderBy: { siteName: 'asc' } });
-    return NextResponse.json(sites);
+    const sites = await prisma.site.findMany({
+      where,
+      orderBy: { siteName: 'asc' },
+      include: {
+        client: { select: { clientName: true } },
+        _count: {
+          select: { generators: true, serviceJobs: true, pmsRecords: true },
+        },
+      },
+    });
+    const result = sites.map((s) => ({
+      ...s,
+      clientName: s.client?.clientName ?? s.clientId,
+      generatorCount: s._count.generators,
+      serviceJobCount: s._count.serviceJobs,
+      pmsRecordCount: s._count.pmsRecords,
+    }));
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error('[SITES GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch sites' }, { status: 500 });

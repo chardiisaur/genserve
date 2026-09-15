@@ -8,8 +8,39 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if (isNextResponse(auth)) return auth;
   try {
-    const quotations = await prisma.quotationBilling.findMany({ orderBy: { createdAt: 'desc' } });
-    return NextResponse.json(quotations);
+    const { searchParams } = new URL(req.url);
+    const jobOrderNo = searchParams.get('jobOrderNo');
+    const clientId = searchParams.get('clientId');
+
+    const where: Record<string, unknown> = {};
+    if (jobOrderNo) where.jobOrderNo = jobOrderNo;
+    if (clientId) where.clientId = clientId;
+
+    const quotations = await prisma.quotationBilling.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        serviceJob: {
+          select: {
+            jobOrderNo: true,
+            site: { select: { siteName: true } },
+            generator: { select: { assetNo: true, brand: true, model: true } },
+          },
+        },
+        client: { select: { clientName: true } },
+      },
+    });
+
+    const result = quotations.map((q) => ({
+      ...q,
+      clientName: q.client?.clientName ?? q.clientId,
+      siteName: q.serviceJob?.site?.siteName ?? '',
+      generatorLabel: q.serviceJob?.generator
+        ? `${q.serviceJob.generator.assetNo} / ${q.serviceJob.generator.brand} ${q.serviceJob.generator.model}`.trim()
+        : '',
+    }));
+
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error('[BILLING GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch billing records' }, { status: 500 });
