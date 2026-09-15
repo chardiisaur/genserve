@@ -50,6 +50,7 @@ function fmt(n: number) {
 export default function BillingScreen() {
   const [records, setRecords] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -61,13 +62,16 @@ export default function BillingScreen() {
   const fetchRecords = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/billing');
-      if (res.ok) {
-        const data = await res.json();
-        setRecords(data);
+      setError(null);
+      let res = await fetch('/api/billing');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
       }
-    } catch {
-      // fallback to empty
+      const data = await res.json();
+      setRecords(data);
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to load billing records');
     } finally {
       setLoading(false);
     }
@@ -117,17 +121,24 @@ export default function BillingScreen() {
     setSaving(true);
     try {
       const payload = { ...form, totalAmount: computeTotal(form) };
+      let res: Response;
       if (editRecord) {
-        const res = await fetch(`/api/billing/${editRecord.transactionId}`, {
+        res = await fetch(`/api/billing/${editRecord.transactionId}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
         });
-        if (res.ok) { await fetchRecords(); setModalOpen(false); }
       } else {
-        const res = await fetch('/api/billing', {
+        res = await fetch('/api/billing', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
         });
-        if (res.ok) { await fetchRecords(); setModalOpen(false); }
       }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchRecords();
+      setModalOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to save billing record');
     } finally {
       setSaving(false);
     }
@@ -205,6 +216,14 @@ export default function BillingScreen() {
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">Loading...</div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3">
+              <Icon name="ExclamationCircleIcon" size={32} className="text-red-500" />
+              <p className="text-sm font-500 text-foreground">{error}</p>
+              <button onClick={fetchRecords} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
+                <Icon name="ArrowPathIcon" size={14} />Retry
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
             <EmptyState icon="DocumentCurrencyDollarIcon" title="No billing records" description="Create your first invoice to get started." />
           ) : (

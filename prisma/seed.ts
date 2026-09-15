@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function hashPassword(password: string): Promise<string> {
-  // Dynamic import to handle bcryptjs v3 ESM-only module
   const bcrypt = await import('bcryptjs');
   const bcryptModule = (bcrypt as any).default ?? bcrypt;
   return bcryptModule.hash(password, 12);
@@ -20,13 +19,7 @@ async function main() {
     const adminName = process.env.INITIAL_ADMIN_NAME ?? 'System Administrator';
     const passwordHash = await hashPassword(adminPassword);
     await prisma.user.create({
-      data: {
-        name: adminName,
-        email: adminEmail.toLowerCase(),
-        passwordHash,
-        role: 'ADMIN',
-        status: 'ACTIVE',
-      },
+      data: { name: adminName, email: adminEmail.toLowerCase(), passwordHash, role: 'ADMIN', status: 'ACTIVE' },
     });
     console.log(`✅ Initial admin created: ${adminEmail}`);
   } else {
@@ -45,8 +38,9 @@ async function main() {
     { serviceTypeId: 'st-008', serviceType: 'Emergency Call', description: 'Emergency breakdown response', defaultPriority: 'Critical', recommendedReport: 'Emergency Report' },
   ];
   for (const st of serviceTypes) {
-    await prisma?.serviceType?.upsert({ where: { serviceTypeId: st?.serviceTypeId }, update: st, create: st });
+    await prisma.serviceType.upsert({ where: { serviceTypeId: st.serviceTypeId }, update: st, create: st });
   }
+  console.log(`✅ Service types: ${serviceTypes.length}`);
 
   // ── Engine Models ──────────────────────────────────────────────
   const engineModels = [
@@ -61,8 +55,9 @@ async function main() {
     { modelId: 'em-009', brand: 'Mitsubishi', engineModel: 'S6A3', cylinders: 6, displacement: '11.9L', typicalKwRange: '150-200 kW', typicalKvaRange: '188-250 kVA', oilCapacity: '18L', coolantCapacity: '35L', recommendedPmsInterval: 250, notes: '' },
   ];
   for (const em of engineModels) {
-    await prisma?.engineModel?.upsert({ where: { modelId: em?.modelId }, update: em, create: em });
+    await prisma.engineModel.upsert({ where: { modelId: em.modelId }, update: em, create: em });
   }
+  console.log(`✅ Engine models: ${engineModels.length}`);
 
   // ── Clients ────────────────────────────────────────────────────
   const clients = [
@@ -76,8 +71,9 @@ async function main() {
     { clientId: 'cli-008', clientName: 'Jollibee Foods Corp.', accountType: 'Corporate', industry: 'Food & Beverage', primaryContact: 'Engr. Grace Villanueva', contactNo: '0921-777-5319', email: 'facilities@jollibee.com.ph', billingAddress: 'Jollibee Plaza, Ortigas Center, Pasig City', remarks: '', status: 'Active' },
   ];
   for (const c of clients) {
-    await prisma?.client?.upsert({ where: { clientId: c?.clientId }, update: c, create: c });
+    await prisma.client.upsert({ where: { clientId: c.clientId }, update: c, create: c });
   }
+  console.log(`✅ Clients: ${clients.length}`);
 
   // ── Sites ──────────────────────────────────────────────────────
   const sites = [
@@ -98,8 +94,9 @@ async function main() {
     { siteId: 'site-015', clientId: 'cli-008', siteName: 'Canlubang Plant', siteAddress: 'Canlubang, Calamba, Laguna', siteContact: 'Plant Manager', contactNo: '0921-777-1111', operatingHours: '24/7', accessRequirements: '', generatorRoomNotes: '', remarks: '' },
   ];
   for (const s of sites) {
-    await prisma?.site?.upsert({ where: { siteId: s?.siteId }, update: s, create: s });
+    await prisma.site.upsert({ where: { siteId: s.siteId }, update: s, create: s });
   }
+  console.log(`✅ Sites: ${sites.length}`);
 
   // ── Technicians ────────────────────────────────────────────────
   const technicians = [
@@ -113,8 +110,9 @@ async function main() {
     { technicianId: 'tech-008', technicianName: 'Renato Cruz', position: 'Junior Technician', contactNo: '0917-100-0008', skillLevel: 'Junior', engineExpertise: 'General', controllerExpertise: 'Basic', electricalExpertise: 'Basic', mechanicalExpertise: 'Basic', availability: 'Available', certifications: '', remarks: '' },
   ];
   for (const t of technicians) {
-    await prisma?.technician?.upsert({ where: { technicianId: t?.technicianId }, update: t, create: t });
+    await prisma.technician.upsert({ where: { technicianId: t.technicianId }, update: t, create: t });
   }
+  console.log(`✅ Technicians: ${technicians.length}`);
 
   // ── Generators ─────────────────────────────────────────────────
   const generators = [
@@ -130,8 +128,9 @@ async function main() {
     { generatorId: 'gen-003', clientId: 'cli-008', siteId: 'site-014', assetNo: 'GEN-003', brand: 'Mitsubishi', model: 'S6A3-PTA', ratedKw: 180, ratedKva: 225, voltage: 480, phase: 'Three-Phase', frequencyHz: 60, rpm: 1500, engineBrand: 'Mitsubishi', engineModel: 'S6A3', engineSerialNo: 'MIT-S6A3-003', alternatorBrand: 'Leroy Somer', alternatorModel: 'LSA 44.2', alternatorSerialNo: 'LS-003', controllerBrand: 'Deep Sea', controllerModel: 'DSE7320', atsBrandModel: 'Socomec ATyS 6e', breakerRatingA: 350, fuelType: 'Diesel', installationDate: '2022-02-14', warrantyExpiry: '2025-02-14', currentRunningHours: 3100, pmsIntervalHours: 250, lastPmsDate: '2026-07-25', nextPmsDueDate: '2026-10-25', synchronizingCapable: 'No', status: 'Active', remarks: '' },
   ];
   for (const g of generators) {
-    await prisma?.generator?.upsert({ where: { generatorId: g?.generatorId }, update: g, create: g });
+    await prisma.generator.upsert({ where: { generatorId: g.generatorId }, update: g, create: g });
   }
+  console.log(`✅ Generators: ${generators.length}`);
 
   // ── Parts Inventory ────────────────────────────────────────────
   const parts = [
@@ -149,21 +148,41 @@ async function main() {
     { partId: 'pt-012', partNo: 'CUM-3803700', partDescription: 'Fuel Filter Secondary', brand: 'Cummins', applicableEngine: 'Cummins QSB / QSC', supplier: 'Cummins Philippines', unit: 'pc', unitCost: 950, sellingPrice: 1400, stockQty: 15, minimumStock: 8, storageLocation: 'Shelf A-3', reorderStatus: 'OK', remarks: '' },
   ];
   for (const p of parts) {
-    await prisma?.partInventory?.upsert({ where: { partId: p?.partId }, update: p, create: p });
+    await prisma.partInventory.upsert({ where: { partId: p.partId }, update: p, create: p });
   }
+  console.log(`✅ Parts inventory: ${parts.length}`);
 
   // ── Service Jobs ───────────────────────────────────────────────
+  // NOTE: leadTechnicianId and additionalTechnicianId are nullable (String?)
+  // Use null instead of empty string for unset values
   const jobs = [
     { jobOrderNo: 'JO-2026-0094', requestDate: '2026-09-09', clientId: 'cli-001', siteId: 'site-001', generatorId: 'gen-047', serviceType: 'Emergency Call', problem: 'Generator failed to start during power outage. No-crank condition reported.', priority: 'Critical', scheduledDate: '2026-09-09', status: 'In Progress', leadTechnicianId: 'tech-001', additionalTechnicianId: 'tech-003', startDate: '2026-09-09', runningHours: 8420, billingStatus: 'Pending', customerRepresentative: 'Atty. Maria Lim', customerContact: '0917-555-1234', remarks: 'High priority — client is a banking institution' },
-    { jobOrderNo: 'JO-2026-0093', requestDate: '2026-09-07', clientId: 'cli-002', siteId: 'site-003', generatorId: 'gen-031', serviceType: 'PMS', problem: 'Scheduled 250-hour preventive maintenance service.', priority: 'Normal', scheduledDate: '2026-09-10', status: 'Open', leadTechnicianId: 'tech-002', billingStatus: 'Pending' },
-    { jobOrderNo: 'JO-2026-0092', requestDate: '2026-09-05', clientId: 'cli-003', siteId: 'site-005', generatorId: 'gen-022', serviceType: 'Repair', problem: 'Coolant leak detected in upper radiator hose. Engine temperature warning active.', priority: 'High', scheduledDate: '2026-09-08', status: 'In Progress', leadTechnicianId: 'tech-003', startDate: '2026-09-08', runningHours: 12380, findings: 'Upper radiator hose cracked near clamp fitting. Coolant level critically low.', workPerformed: 'Replaced upper radiator hose. Refilled coolant to full capacity.', billingStatus: 'Quoted', quotationNo: 'QT-2026-0087', customerRepresentative: 'Engr. Paulo Santos', customerContact: '0918-444-9876' },
-    { jobOrderNo: 'JO-2026-0091', requestDate: '2026-09-03', clientId: 'cli-004', siteId: 'site-007', generatorId: 'gen-015', serviceType: 'Load Test', problem: 'Annual load bank test required per facility maintenance protocol.', priority: 'High', scheduledDate: '2026-09-07', status: 'Completed', leadTechnicianId: 'tech-001', startDate: '2026-09-07', completionDate: '2026-09-07', runningHours: 19240, findings: 'Generator performed within specifications at 100% rated load.', workPerformed: 'Conducted 4-hour load bank test at 25%, 50%, 75%, and 100% rated load.', testingResults: 'All parameters within OEM specifications. No anomalies detected.', recommendations: 'Next load test due Sep 2027.', serviceReportNo: 'SR-2026-0091', billingStatus: 'Invoiced', quotationNo: 'QT-2026-0085' },
-    { jobOrderNo: 'JO-2026-0090', requestDate: '2026-09-06', clientId: 'cli-005', siteId: 'site-009', generatorId: 'gen-039', serviceType: 'Troubleshooting', problem: 'Generator trips on overload fault after 15 minutes of operation. Circuit breaker trips.', priority: 'High', scheduledDate: '2026-09-09', status: 'Open', leadTechnicianId: 'tech-004', billingStatus: 'Pending' },
-    { jobOrderNo: 'JO-2026-0089', requestDate: '2026-09-01', clientId: 'cli-006', siteId: 'site-011', generatorId: 'gen-028', serviceType: 'PMS', problem: 'Scheduled 250-hour preventive maintenance.', priority: 'Normal', scheduledDate: '2026-09-05', status: 'Completed', leadTechnicianId: 'tech-005', startDate: '2026-09-05', completionDate: '2026-09-05', runningHours: 5200, serviceReportNo: 'SR-2026-0089', billingStatus: 'Invoiced', quotationNo: 'QT-2026-0083' },
+    { jobOrderNo: 'JO-2026-0093', requestDate: '2026-09-07', clientId: 'cli-002', siteId: 'site-003', generatorId: 'gen-031', serviceType: 'PMS', problem: 'Scheduled 250-hour preventive maintenance service.', priority: 'Normal', scheduledDate: '2026-09-10', status: 'Open', leadTechnicianId: 'tech-002', additionalTechnicianId: null, billingStatus: 'Pending' },
+    { jobOrderNo: 'JO-2026-0092', requestDate: '2026-09-05', clientId: 'cli-003', siteId: 'site-005', generatorId: 'gen-022', serviceType: 'Repair', problem: 'Coolant leak detected in upper radiator hose. Engine temperature warning active.', priority: 'High', scheduledDate: '2026-09-08', status: 'In Progress', leadTechnicianId: 'tech-003', additionalTechnicianId: null, startDate: '2026-09-08', runningHours: 12380, findings: 'Upper radiator hose cracked near clamp fitting. Coolant level critically low.', workPerformed: 'Replaced upper radiator hose. Refilled coolant to full capacity.', billingStatus: 'Quoted', quotationNo: 'QT-2026-0087', customerRepresentative: 'Engr. Paulo Santos', customerContact: '0918-444-9876' },
+    { jobOrderNo: 'JO-2026-0091', requestDate: '2026-09-03', clientId: 'cli-004', siteId: 'site-007', generatorId: 'gen-015', serviceType: 'Load Test', problem: 'Annual load bank test required per facility maintenance protocol.', priority: 'High', scheduledDate: '2026-09-07', status: 'Completed', leadTechnicianId: 'tech-001', additionalTechnicianId: null, startDate: '2026-09-07', completionDate: '2026-09-07', runningHours: 19240, findings: 'Generator performed within specifications at 100% rated load.', workPerformed: 'Conducted 4-hour load bank test at 25%, 50%, 75%, and 100% rated load.', testingResults: 'All parameters within OEM specifications. No anomalies detected.', recommendations: 'Next load test due Sep 2027.', serviceReportNo: 'SR-2026-0091', billingStatus: 'Invoiced', quotationNo: 'QT-2026-0085' },
+    { jobOrderNo: 'JO-2026-0090', requestDate: '2026-09-06', clientId: 'cli-005', siteId: 'site-009', generatorId: 'gen-039', serviceType: 'Troubleshooting', problem: 'Generator trips on overload fault after 15 minutes of operation. Circuit breaker trips.', priority: 'High', scheduledDate: '2026-09-09', status: 'Open', leadTechnicianId: 'tech-004', additionalTechnicianId: null, billingStatus: 'Pending' },
+    { jobOrderNo: 'JO-2026-0089', requestDate: '2026-09-01', clientId: 'cli-006', siteId: 'site-011', generatorId: 'gen-028', serviceType: 'PMS', problem: 'Scheduled 250-hour preventive maintenance.', priority: 'Normal', scheduledDate: '2026-09-05', status: 'Completed', leadTechnicianId: 'tech-005', additionalTechnicianId: null, startDate: '2026-09-05', completionDate: '2026-09-05', runningHours: 5200, serviceReportNo: 'SR-2026-0089', billingStatus: 'Invoiced', quotationNo: 'QT-2026-0083' },
   ];
   for (const j of jobs) {
-    await prisma?.serviceJob?.upsert({ where: { jobOrderNo: j?.jobOrderNo }, update: j, create: j });
+    await prisma.serviceJob.upsert({ where: { jobOrderNo: j.jobOrderNo }, update: j, create: j });
   }
+  console.log(`✅ Service jobs: ${jobs.length}`);
+
+  // ── Initialize Job Order Sequence ──────────────────────────────
+  // Set the sequence counter to the highest existing JO number for the current year
+  // so the next generated JO continues from where the seed data left off
+  const currentYear = new Date().getFullYear();
+  const maxJo = await prisma.serviceJob.findFirst({
+    where: { jobOrderNo: { startsWith: `JO-${currentYear}-` } },
+    orderBy: { jobOrderNo: 'desc' },
+  });
+  const lastSeq = maxJo ? parseInt(maxJo.jobOrderNo.split('-')[2], 10) : 0;
+  await prisma.jobOrderSequence.upsert({
+    where: { year: currentYear },
+    update: { lastSeq },
+    create: { year: currentYear, lastSeq },
+  });
+  console.log(`✅ Job order sequence initialized: JO-${currentYear}-${String(lastSeq).padStart(4, '0')} (next will be ${String(lastSeq + 1).padStart(4, '0')})`);
 
   // ── Quotations & Billing ───────────────────────────────────────
   const quotations = [
@@ -172,8 +191,9 @@ async function main() {
     { transactionId: 'txn-003', jobOrderNo: 'JO-2026-0089', clientId: 'cli-006', quotationNo: 'QT-2026-0083', quotationDate: '2026-09-02', invoiceNo: 'INV-2026-0069', invoiceDate: '2026-09-06', labor: 6000, parts: 3200, transportation: 1000, accommodation: 0, otherCharges: 0, discount: 500, totalAmount: 9700, billingStatus: 'Paid', paymentDate: '2026-09-09', remarks: '250-hour PMS' },
   ];
   for (const q of quotations) {
-    await prisma?.quotationBilling?.upsert({ where: { transactionId: q?.transactionId }, update: q, create: q });
+    await prisma.quotationBilling.upsert({ where: { transactionId: q.transactionId }, update: q, create: q });
   }
+  console.log(`✅ Quotations/billing: ${quotations.length}`);
 
   // ── Deployments ────────────────────────────────────────────────
   const deployments = [
@@ -183,18 +203,21 @@ async function main() {
     { deploymentId: 'dep-004', jobOrderNo: 'JO-2026-0093', clientId: 'cli-002', siteId: 'site-003', destination: 'SM Aura Premier, BGC Taguig', technicianId: 'tech-002', departureDate: '2026-09-10', returnDate: '', transportation: 'Company Vehicle', accommodation: 'N/A', purpose: 'Scheduled 250-hour PMS', status: 'Planned', remarks: '' },
   ];
   for (const d of deployments) {
-    await prisma?.deployment?.upsert({ where: { deploymentId: d?.deploymentId }, update: d, create: d });
+    await prisma.deployment.upsert({ where: { deploymentId: d.deploymentId }, update: d, create: d });
   }
+  console.log(`✅ Deployments: ${deployments.length}`);
 
   // ── PMS Records ────────────────────────────────────────────────
+  // NOTE: technicianId is nullable (String?) — use null for unset values
   const pmsRecords = [
     { pmsRecordId: 'pms-001', generatorId: 'gen-047', clientId: 'cli-001', siteId: 'site-001', pmsType: '250-Hour PMS', pmsDate: '2026-07-10', runningHours: 8250, nextPmsDate: '2026-10-10', nextPmsHours: 8500, technicianId: 'tech-001', pmsScope: 'Full 250-hour service', pmsStatus: 'Completed', engineOil: 'Replaced', oilFilter: 'Replaced', fuelFilter: 'Replaced', waterSeparator: 'OK', airFilter: 'OK', coolant: 'OK', belts: 'OK', hoses: 'OK', battery: 'OK', batteryCharger: 'OK', radiatorCooling: 'OK', fuelSystem: 'OK', exhaust: 'OK', turbocharger: 'OK', alternator: 'OK', avr: 'OK', controller: 'OK', breakerAts: 'OK', emergencyStop: 'OK', loadTest: 'OK', generalCondition: 'Good', recommendations: 'Next PMS due Oct 2026', remarks: '' },
     { pmsRecordId: 'pms-002', generatorId: 'gen-031', clientId: 'cli-002', siteId: 'site-003', pmsType: '250-Hour PMS', pmsDate: '2026-08-01', runningHours: 15500, nextPmsDate: '2026-11-01', nextPmsHours: 15750, technicianId: 'tech-002', pmsScope: 'Full 250-hour service', pmsStatus: 'Completed', engineOil: 'Replaced', oilFilter: 'Replaced', fuelFilter: 'Replaced', waterSeparator: 'OK', airFilter: 'Replaced', coolant: 'OK', belts: 'OK', hoses: 'OK', battery: 'OK', batteryCharger: 'OK', radiatorCooling: 'OK', fuelSystem: 'OK', exhaust: 'OK', turbocharger: 'OK', alternator: 'OK', avr: 'OK', controller: 'OK', breakerAts: 'OK', emergencyStop: 'OK', loadTest: 'OK', generalCondition: 'Good', recommendations: '', remarks: '' },
     { pmsRecordId: 'pms-003', generatorId: 'gen-028', clientId: 'cli-006', siteId: 'site-011', pmsType: '250-Hour PMS', pmsDate: '2026-09-05', runningHours: 5200, nextPmsDate: '2026-12-05', nextPmsHours: 5450, technicianId: 'tech-005', pmsScope: 'Full 250-hour service', pmsStatus: 'Completed', engineOil: 'Replaced', oilFilter: 'Replaced', fuelFilter: 'OK', waterSeparator: 'OK', airFilter: 'OK', coolant: 'OK', belts: 'OK', hoses: 'OK', battery: 'OK', batteryCharger: 'OK', radiatorCooling: 'OK', fuelSystem: 'OK', exhaust: 'OK', turbocharger: 'N/A', alternator: 'OK', avr: 'OK', controller: 'OK', breakerAts: 'OK', emergencyStop: 'OK', loadTest: 'OK', generalCondition: 'Good', recommendations: '', remarks: '' },
   ];
   for (const p of pmsRecords) {
-    await prisma?.pmsRecord?.upsert({ where: { pmsRecordId: p?.pmsRecordId }, update: p, create: p });
+    await prisma.pmsRecord.upsert({ where: { pmsRecordId: p.pmsRecordId }, update: p, create: p });
   }
+  console.log(`✅ PMS records: ${pmsRecords.length}`);
 
   // ── Settings ───────────────────────────────────────────────────
   const settings = [
@@ -205,10 +228,33 @@ async function main() {
     { key: 'pms_interval_default', value: '250', notes: 'Default PMS interval in hours' },
   ];
   for (const s of settings) {
-    await prisma?.setting?.upsert({ where: { key: s?.key }, update: s, create: s });
+    await prisma.setting.upsert({ where: { key: s.key }, update: s, create: s });
   }
+  console.log(`✅ Settings: ${settings.length}`);
 
-  console.log('✅ Database seeded successfully!');
+  // ── Final Summary ──────────────────────────────────────────────
+  const counts = await Promise.all([
+    prisma.user.count(),
+    prisma.client.count(),
+    prisma.site.count(),
+    prisma.generator.count(),
+    prisma.technician.count(),
+    prisma.serviceJob.count(),
+    prisma.pmsRecord.count(),
+    prisma.partInventory.count(),
+    prisma.quotationBilling.count(),
+    prisma.deployment.count(),
+    prisma.engineModel.count(),
+    prisma.serviceType.count(),
+    prisma.setting.count(),
+    prisma.jobOrderSequence.count(),
+  ]);
+  const labels = ['Users', 'Clients', 'Sites', 'Generators', 'Technicians', 'ServiceJobs', 'PmsRecords', 'Parts', 'Billing', 'Deployments', 'EngineModels', 'ServiceTypes', 'Settings', 'JOSequences'];
+  console.log('\n📊 Database record counts:');
+  labels.forEach((l, i) => console.log(`   ${l}: ${counts[i]}`));
+  console.log('\n✅ Database seeded successfully!');
 }
 
-main()?.catch((e) => { console.error(e); process.exit(1); })?.finally(async () => { await prisma?.$disconnect(); });
+main()
+  .catch((e) => { console.error(e); process.exit(1); })
+  .finally(async () => { await prisma.$disconnect(); });

@@ -1,23 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
-export async function GET() {
+/** Collision-safe generator ID */
+function newGeneratorId(): string {
+  return `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
-    const generators = await prisma.generator.findMany({ orderBy: { generatorId: 'asc' } });
+    const { searchParams } = new URL(req.url);
+    const clientId = searchParams.get('clientId');
+    const siteId = searchParams.get('siteId');
+    const where: Record<string, string> = {};
+    if (clientId) where.clientId = clientId;
+    if (siteId) where.siteId = siteId;
+    const generators = await prisma.generator.findMany({ where, orderBy: { generatorId: 'asc' } });
     return NextResponse.json(generators);
-  } catch {
+  } catch (err: unknown) {
+    console.error('[GENERATOR GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch generators' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
+    if (!body.clientId || !body.siteId) {
+      return NextResponse.json({ error: 'clientId and siteId are required' }, { status: 400 });
+    }
     const generator = await prisma.generator.create({
-      data: { generatorId: `gen-${Date.now()}`, ...body },
+      data: { generatorId: newGeneratorId(), ...body },
     });
     return NextResponse.json(generator, { status: 201 });
-  } catch {
+  } catch (err: unknown) {
+    console.error('[GENERATOR CREATE ERROR]', err);
+    const code = (err as any)?.code;
+    if (code === 'P2002') return NextResponse.json({ error: 'Duplicate record.' }, { status: 409 });
+    if (code === 'P2003') return NextResponse.json({ error: 'Referenced client or site not found.' }, { status: 400 });
     return NextResponse.json({ error: 'Failed to create generator' }, { status: 500 });
   }
 }

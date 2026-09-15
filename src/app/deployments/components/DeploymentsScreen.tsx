@@ -49,6 +49,7 @@ export default function DeploymentsScreen() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [technicians, setTechnicians] = useState<{ technicianId: string; technicianName: string; availability: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -60,14 +61,19 @@ export default function DeploymentsScreen() {
   const fetchAll = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [dRes, tRes] = await Promise.all([
         fetch('/api/deployments'),
         fetch('/api/technicians'),
       ]);
-      if (dRes.ok) setDeployments(await dRes.json());
+      if (!dRes.ok) {
+        const d = await dRes.json().catch(() => ({}));
+        throw new Error(d.error || `Server error ${dRes.status}`);
+      }
+      setDeployments(await dRes.json());
       if (tRes.ok) setTechnicians(await tRes.json());
-    } catch {
-      // fallback
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to load deployments');
     } finally {
       setLoading(false);
     }
@@ -102,17 +108,24 @@ export default function DeploymentsScreen() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      let res: Response;
       if (editDep) {
-        const res = await fetch(`/api/deployments/${editDep.deploymentId}`, {
+        res = await fetch(`/api/deployments/${editDep.deploymentId}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
         });
-        if (res.ok) { await fetchAll(); setModalOpen(false); }
       } else {
-        const res = await fetch('/api/deployments', {
+        res = await fetch('/api/deployments', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
         });
-        if (res.ok) { await fetchAll(); setModalOpen(false); }
       }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchAll();
+      setModalOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to save deployment');
     } finally {
       setSaving(false);
     }
@@ -190,6 +203,14 @@ export default function DeploymentsScreen() {
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">Loading...</div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-40 gap-3">
+              <Icon name="ExclamationCircleIcon" size={32} className="text-red-500" />
+              <p className="text-sm font-500 text-foreground">{error}</p>
+              <button onClick={fetchAll} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
+                <Icon name="ArrowPathIcon" size={14} />Retry
+              </button>
+            </div>
           ) : filtered.length === 0 ? (
             <EmptyState icon="TruckIcon" title="No deployments found" description="Create a deployment to dispatch technicians to field jobs." />
           ) : (

@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Icon from '@/components/ui/AppIcon';
-
 import EmptyState from '@/components/ui/EmptyState';
 import Modal from '@/components/ui/Modal';
+
 
 export type ReorderStatus = 'OK' | 'Low Stock' | 'Critical' | 'Out of Stock';
 
 export interface SparePart {
   id: string;
+  partId: string;
   partNo: string;
   partDescription: string;
   brand: string;
@@ -25,22 +26,7 @@ export interface SparePart {
   remarks: string;
 }
 
-const mockParts: SparePart[] = [
-  { id: 'pt-001', partNo: 'CUM-3401544', partDescription: 'Engine Oil Filter', brand: 'Cummins', applicableEngine: 'Cummins 6BT / 6CT / QSB', supplier: 'Cummins Philippines', unit: 'pc', unitCost: 850, sellingPrice: 1200, stockQty: 24, minimumStock: 10, storageLocation: 'Shelf A-1', reorderStatus: 'OK', remarks: '' },
-  { id: 'pt-002', partNo: 'CUM-3315843', partDescription: 'Fuel Filter Primary', brand: 'Cummins', applicableEngine: 'Cummins KTA38 / QSK78', supplier: 'Cummins Philippines', unit: 'pc', unitCost: 1200, sellingPrice: 1800, stockQty: 6, minimumStock: 8, storageLocation: 'Shelf A-2', reorderStatus: 'Low Stock', remarks: 'Reorder ASAP' },
-  { id: 'pt-003', partNo: 'MIT-ME013262', partDescription: 'Air Filter Element', brand: 'Mitsubishi', applicableEngine: 'Mitsubishi S12R / S16R', supplier: 'Mitsubishi Heavy Industries', unit: 'pc', unitCost: 2400, sellingPrice: 3500, stockQty: 3, minimumStock: 5, storageLocation: 'Shelf B-1', reorderStatus: 'Critical', remarks: 'Long lead time — 2 weeks' },
-  { id: 'pt-004', partNo: 'CUM-3803619', partDescription: 'Water Pump Seal Kit', brand: 'Cummins', applicableEngine: 'Cummins QST30 / QSK78', supplier: 'Cummins Philippines', unit: 'set', unitCost: 3800, sellingPrice: 5500, stockQty: 12, minimumStock: 4, storageLocation: 'Shelf C-3', reorderStatus: 'OK', remarks: '' },
-  { id: 'pt-005', partNo: 'GEN-BELT-001', partDescription: 'V-Belt Fan Drive', brand: 'Gates', applicableEngine: 'Universal / Multi-brand', supplier: 'Gates Philippines', unit: 'pc', unitCost: 650, sellingPrice: 950, stockQty: 0, minimumStock: 6, storageLocation: 'Shelf A-4', reorderStatus: 'Out of Stock', remarks: 'Ordered — ETA 3 days' },
-  { id: 'pt-006', partNo: 'CUM-3803698', partDescription: 'Coolant Hose Upper Radiator', brand: 'Cummins', applicableEngine: 'Cummins C550 / KTA38', supplier: 'Cummins Philippines', unit: 'pc', unitCost: 1800, sellingPrice: 2600, stockQty: 8, minimumStock: 4, storageLocation: 'Shelf B-2', reorderStatus: 'OK', remarks: '' },
-  { id: 'pt-007', partNo: 'MIT-ME013300', partDescription: 'Fuel Injection Nozzle', brand: 'Mitsubishi', applicableEngine: 'Mitsubishi S6A3 / S12R', supplier: 'Mitsubishi Heavy Industries', unit: 'pc', unitCost: 8500, sellingPrice: 12000, stockQty: 4, minimumStock: 2, storageLocation: 'Shelf D-1', reorderStatus: 'OK', remarks: 'High-value item' },
-  { id: 'pt-008', partNo: 'BAT-12V-200AH', partDescription: 'Battery 12V 200AH', brand: 'Motolite', applicableEngine: 'Universal', supplier: 'Motolite Marketing Corp.', unit: 'pc', unitCost: 6500, sellingPrice: 9000, stockQty: 5, minimumStock: 4, storageLocation: 'Shelf E-1', reorderStatus: 'OK', remarks: '' },
-  { id: 'pt-009', partNo: 'CUM-3803456', partDescription: 'Lube Oil (15W-40) 4L', brand: 'Cummins Valvoline', applicableEngine: 'Cummins All Models', supplier: 'Cummins Philippines', unit: 'gal', unitCost: 1100, sellingPrice: 1600, stockQty: 40, minimumStock: 20, storageLocation: 'Shelf A-5', reorderStatus: 'OK', remarks: '' },
-  { id: 'pt-010', partNo: 'MIT-ME013400', partDescription: 'Turbocharger Gasket Set', brand: 'Mitsubishi', applicableEngine: 'Mitsubishi S16R', supplier: 'Mitsubishi Heavy Industries', unit: 'set', unitCost: 4200, sellingPrice: 6000, stockQty: 2, minimumStock: 2, storageLocation: 'Shelf D-2', reorderStatus: 'Low Stock', remarks: '' },
-  { id: 'pt-011', partNo: 'AVR-SX460-001', partDescription: 'AVR Module SX460', brand: 'Stamford', applicableEngine: 'Stamford Alternator', supplier: 'Newage Stamford Philippines', unit: 'pc', unitCost: 12000, sellingPrice: 17500, stockQty: 3, minimumStock: 2, storageLocation: 'Shelf F-1', reorderStatus: 'OK', remarks: 'Sensitive electronic component' },
-  { id: 'pt-012', partNo: 'CUM-3803700', partDescription: 'Fuel Filter Secondary', brand: 'Cummins', applicableEngine: 'Cummins QSB / QSC', supplier: 'Cummins Philippines', unit: 'pc', unitCost: 950, sellingPrice: 1400, stockQty: 15, minimumStock: 8, storageLocation: 'Shelf A-3', reorderStatus: 'OK', remarks: '' },
-];
-
-const emptyPart: Omit<SparePart, 'id'> = {
+const emptyPart: Omit<SparePart, 'id' | 'partId'> = {
   partNo: '', partDescription: '', brand: '', applicableEngine: '', supplier: '',
   unit: 'pc', unitCost: 0, sellingPrice: 0, stockQty: 0, minimumStock: 0,
   storageLocation: '', reorderStatus: 'OK', remarks: '',
@@ -54,16 +40,42 @@ function computeReorderStatus(qty: number, min: number): ReorderStatus {
 }
 
 export default function PartsInventoryScreen() {
-  const [parts, setParts] = useState<SparePart[]>(mockParts);
+  const [parts, setParts] = useState<SparePart[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editPart, setEditPart] = useState<SparePart | null>(null);
   const [detailPart, setDetailPart] = useState<SparePart | null>(null);
-  const [form, setForm] = useState<Omit<SparePart, 'id'>>(emptyPart);
+  const [form, setForm] = useState<Omit<SparePart, 'id' | 'partId'>>(emptyPart);
   const [sortCol, setSortCol] = useState<keyof SparePart>('partNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<SparePart | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchParts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let res = await fetch('/api/parts');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      const data = await res.json();
+      setParts(data);
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to load parts inventory');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchParts(); }, [fetchParts]);
 
   const brands = useMemo(() => [...new Set(parts.map(p => p.brand))].sort(), [parts]);
 
@@ -97,30 +109,76 @@ export default function PartsInventoryScreen() {
   const openCreate = () => {
     setEditPart(null);
     setForm(emptyPart);
+    setSaveError(null);
     setModalOpen(true);
   };
 
   const openEdit = (p: SparePart) => {
     setEditPart(p);
-    setForm({ ...p });
+    setForm({
+      partNo: p.partNo, partDescription: p.partDescription, brand: p.brand,
+      applicableEngine: p.applicableEngine, supplier: p.supplier, unit: p.unit,
+      unitCost: p.unitCost, sellingPrice: p.sellingPrice, stockQty: p.stockQty,
+      minimumStock: p.minimumStock, storageLocation: p.storageLocation,
+      reorderStatus: p.reorderStatus, remarks: p.remarks,
+    });
+    setSaveError(null);
     setModalOpen(true);
     setDetailPart(null);
   };
 
-  const handleSave = () => {
-    const reorderStatus = computeReorderStatus(form.stockQty, form.minimumStock);
-    if (editPart) {
-      setParts(prev => prev.map(p => p.id === editPart.id ? { ...form, id: editPart.id, reorderStatus } : p));
-    } else {
-      const newPart: SparePart = { ...form, id: `pt-${Date.now()}`, reorderStatus };
-      setParts(prev => [newPart, ...prev]);
+  const handleSave = async () => {
+    if (!form.partNo.trim() || !form.partDescription.trim()) {
+      setSaveError('Part No. and Description are required.');
+      return;
     }
-    setModalOpen(false);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const payload = { ...form, reorderStatus: computeReorderStatus(form.stockQty, form.minimumStock) };
+      let res: Response;
+      if (editPart) {
+        res = await fetch(`/api/parts/${editPart.partId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch('/api/parts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchParts();
+      setModalOpen(false);
+    } catch (err: unknown) {
+      setSaveError((err as Error).message || 'Failed to save part');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setParts(prev => prev.filter(p => p.id !== id));
-    if (detailPart?.id === id) setDetailPart(null);
+  const handleDelete = async (part: SparePart) => {
+    setDeleting(true);
+    try {
+      let res = await fetch(`/api/parts/${part.partId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchParts();
+      setDeleteConfirm(null);
+      if (detailPart?.partId === part.partId) setDetailPart(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to delete part');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const kpiOk = parts.filter(p => p.reorderStatus === 'OK').length;
@@ -145,12 +203,33 @@ export default function PartsInventoryScreen() {
   const modalFooter = (
     <div className="flex items-center justify-end gap-3 w-full">
       <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors">Cancel</button>
-      <button type="button" onClick={handleSave} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150">
-        <Icon name="CheckIcon" size={15} />
-        {editPart ? 'Update Part' : 'Add Part'}
+      <button type="button" onClick={handleSave} disabled={saving} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed">
+        {saving ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" />Saving...</> : <><Icon name="CheckIcon" size={15} />{editPart ? 'Update Part' : 'Add Part'}</>}
       </button>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Icon name="ArrowPathIcon" size={32} className="animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading parts inventory...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Icon name="ExclamationCircleIcon" size={40} className="text-red-500" />
+        <p className="text-base font-600 text-foreground">Failed to load parts inventory</p>
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <button onClick={fetchParts} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
+          <Icon name="ArrowPathIcon" size={15} />Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -158,11 +237,10 @@ export default function PartsInventoryScreen() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-600 text-foreground">Parts Inventory</h1>
-          <p className="text-xs text-muted-foreground mt-1">{parts.length} parts registered · Updated 11 Sep 2026</p>
+          <p className="text-xs text-muted-foreground mt-1">{parts.length} parts registered</p>
         </div>
         <button onClick={openCreate} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-4 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 flex-shrink-0">
-          <Icon name="PlusIcon" size={16} />
-          Add Part
+          <Icon name="PlusIcon" size={16} />Add Part
         </button>
       </div>
 
@@ -190,13 +268,8 @@ export default function PartsInventoryScreen() {
       <div className="bg-card border border-border rounded-xl px-4 py-3 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Icon name="MagnifyingGlassIcon" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search part no., description, brand, engine..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50"
-          />
+          <input type="text" placeholder="Search part no., description, brand, engine..." value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50" />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
           <option value="">All Statuses</option>
@@ -249,28 +322,31 @@ export default function PartsInventoryScreen() {
             </thead>
             <tbody>
               {sorted.length === 0 ? (
-                <tr><td colSpan={12}><EmptyState icon="ArchiveBoxIcon" title="No parts found" description="Try adjusting your search or filters." /></td></tr>
-              ) : sorted.map(p => (
-                <tr key={p.id} onClick={() => setDetailPart(p)} className={`border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors ${rowBg[p.reorderStatus]}`}>
-                  <td className="px-3 py-3 text-xs font-600 text-foreground font-mono">{p.partNo}</td>
-                  <td className="px-3 py-3 text-xs text-foreground max-w-[200px]">
-                    <p className="truncate font-500">{p.partDescription}</p>
+                <tr><td colSpan={12}>
+                  <EmptyState icon="ArchiveBoxIcon" title="No parts found" description="No parts match your filters, or no parts have been added yet."
+                    action={{ label: 'Add Part', onClick: openCreate }} />
+                </td></tr>
+              ) : sorted.map((p, idx) => (
+                <tr key={p.partId} className={`border-b border-border last:border-0 hover:bg-muted/40 transition-colors group ${rowBg[p.reorderStatus]} ${idx % 2 === 0 ? '' : ''}`}>
+                  <td className="px-3 py-2.5">
+                    <button onClick={() => setDetailPart(p)} className="text-xs font-600 text-primary hover:underline">{p.partNo}</button>
                   </td>
-                  <td className="px-3 py-3 text-xs text-foreground">{p.brand}</td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground max-w-[160px]"><p className="truncate">{p.applicableEngine}</p></td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground">{p.unit}</td>
-                  <td className="px-3 py-3 text-xs text-foreground font-mono">₱{p.unitCost.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-xs text-foreground font-mono">₱{p.sellingPrice.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-xs font-700 text-foreground">{p.stockQty}</td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground">{p.minimumStock}</td>
-                  <td className="px-3 py-3 text-xs text-muted-foreground">{p.storageLocation}</td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-600 border ${statusColor[p.reorderStatus]}`}>{p.reorderStatus}</span>
+                  <td className="px-3 py-2.5 text-xs text-foreground max-w-[200px] truncate">{p.partDescription}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{p.brand}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground max-w-[160px] truncate">{p.applicableEngine}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{p.unit}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{p.unitCost.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{p.sellingPrice.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-xs font-600 text-foreground tabular-nums">{p.stockQty}</td>
+                  <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">{p.minimumStock}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{p.storageLocation}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-500 border ${statusColor[p.reorderStatus]}`}>{p.reorderStatus}</span>
                   </td>
-                  <td className="px-3 py-3 text-right" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors" title="Edit"><Icon name="PencilSquareIcon" size={14} /></button>
-                      <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors" title="Delete"><Icon name="TrashIcon" size={14} /></button>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => openEdit(p)} title="Edit" className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"><Icon name="PencilSquareIcon" size={14} /></button>
+                      <button onClick={() => setDeleteConfirm(p)} title="Delete" className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -278,117 +354,164 @@ export default function PartsInventoryScreen() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-2.5 border-t border-border bg-muted/20 flex items-center justify-between">
-          <p className="text-2xs text-muted-foreground">{sorted.length} of {parts.length} parts</p>
-          <p className="text-2xs text-muted-foreground">Click a row to view details</p>
-        </div>
       </div>
 
-      {/* Detail Drawer */}
+      {/* Detail Panel */}
       {detailPart && (
-        <>
-          <div className="fixed inset-0 bg-foreground/20 z-40 fade-in" onClick={() => setDetailPart(null)} />
-          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-card border-l border-border shadow-modal z-50 flex flex-col slide-up overflow-hidden">
-            <div className="flex items-start justify-between px-6 py-4 border-b border-border flex-shrink-0">
-              <div>
-                <h2 className="text-base font-700 text-foreground">{detailPart.partDescription}</h2>
-                <p className="text-xs text-muted-foreground font-mono mt-0.5">{detailPart.partNo}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => openEdit(detailPart)} className="flex items-center gap-1.5 text-xs font-500 text-primary hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors">
-                  <Icon name="PencilSquareIcon" size={14} /> Edit
-                </button>
-                <button onClick={() => setDetailPart(null)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors"><Icon name="XMarkIcon" size={18} /></button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto scrollbar-thin px-6 py-5 space-y-5">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-600 border ${statusColor[detailPart.reorderStatus]}`}>{detailPart.reorderStatus}</span>
-              </div>
-              <div>
-                <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground mb-2.5">Part Information</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {[
-                    { label: 'Brand', value: detailPart.brand },
-                    { label: 'Unit', value: detailPart.unit },
-                    { label: 'Applicable Engine', value: detailPart.applicableEngine },
-                    { label: 'Supplier', value: detailPart.supplier },
-                    { label: 'Storage Location', value: detailPart.storageLocation },
-                  ].map(f => (
-                    <div key={f.label}>
-                      <p className="text-2xs text-muted-foreground font-500 mb-0.5">{f.label}</p>
-                      <p className="text-xs text-foreground font-500">{f.value || '—'}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <hr className="border-border" />
-              <div>
-                <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground mb-2.5">Stock & Pricing</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-muted/40 rounded-xl p-3 text-center">
-                    <p className="text-2xl font-700 text-foreground">{detailPart.stockQty}</p>
-                    <p className="text-2xs text-muted-foreground mt-0.5">Current Stock</p>
-                  </div>
-                  <div className="bg-muted/40 rounded-xl p-3 text-center">
-                    <p className="text-2xl font-700 text-muted-foreground">{detailPart.minimumStock}</p>
-                    <p className="text-2xs text-muted-foreground mt-0.5">Minimum Stock</p>
-                  </div>
-                  <div className="bg-muted/40 rounded-xl p-3 text-center">
-                    <p className="text-lg font-700 text-foreground">₱{detailPart.unitCost.toLocaleString()}</p>
-                    <p className="text-2xs text-muted-foreground mt-0.5">Unit Cost</p>
-                  </div>
-                  <div className="bg-muted/40 rounded-xl p-3 text-center">
-                    <p className="text-lg font-700 text-primary">₱{detailPart.sellingPrice.toLocaleString()}</p>
-                    <p className="text-2xs text-muted-foreground mt-0.5">Selling Price</p>
-                  </div>
-                </div>
-              </div>
-              {detailPart.remarks && (
-                <div>
-                  <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground mb-2">Remarks</p>
-                  <p className="text-xs text-foreground leading-relaxed bg-amber-50/50 border border-amber-100 rounded-lg p-3">{detailPart.remarks}</p>
-                </div>
-              )}
-            </div>
+        <div className="fixed inset-y-0 right-0 w-96 bg-card border-l border-border shadow-xl z-40 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <h2 className="font-600 text-sm text-foreground">{detailPart.partNo}</h2>
+            <button onClick={() => setDetailPart(null)} className="p-1 rounded hover:bg-muted text-muted-foreground"><Icon name="XMarkIcon" size={16} /></button>
           </div>
-        </>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <p className="text-sm font-500 text-foreground">{detailPart.partDescription}</p>
+            <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-500 border ${statusColor[detailPart.reorderStatus]}`}>{detailPart.reorderStatus}</div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              {[
+                { label: 'Brand', value: detailPart.brand },
+                { label: 'Unit', value: detailPart.unit },
+                { label: 'Unit Cost', value: `₱${detailPart.unitCost.toLocaleString()}` },
+                { label: 'Selling Price', value: `₱${detailPart.sellingPrice.toLocaleString()}` },
+                { label: 'Stock Qty', value: String(detailPart.stockQty) },
+                { label: 'Min. Stock', value: String(detailPart.minimumStock) },
+                { label: 'Location', value: detailPart.storageLocation },
+                { label: 'Supplier', value: detailPart.supplier },
+              ].map(row => (
+                <div key={row.label}>
+                  <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground">{row.label}</p>
+                  <p className="text-xs text-foreground mt-0.5">{row.value || '—'}</p>
+                </div>
+              ))}
+            </div>
+            {detailPart.applicableEngine && (
+              <div>
+                <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground">Applicable Engine</p>
+                <p className="text-xs text-foreground mt-0.5">{detailPart.applicableEngine}</p>
+              </div>
+            )}
+            {detailPart.remarks && (
+              <div>
+                <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground">Remarks</p>
+                <p className="text-xs text-foreground mt-0.5">{detailPart.remarks}</p>
+              </div>
+            )}
+          </div>
+          <div className="border-t border-border p-3 flex gap-2">
+            <button onClick={() => openEdit(detailPart)} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-500 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+              <Icon name="PencilSquareIcon" size={13} />Edit
+            </button>
+            <button onClick={() => setDeleteConfirm(detailPart)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-500 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+              <Icon name="TrashIcon" size={13} />Delete
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* Add/Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editPart ? 'Edit Part' : 'Add New Part'} subtitle="Fill in all part details from the inventory record" size="lg" footer={modalFooter}>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Part No. *" value={form.partNo} onChange={v => setForm(f => ({ ...f, partNo: v }))} placeholder="e.g. CUM-3401544" />
-          <FormField label="Part Description *" value={form.partDescription} onChange={v => setForm(f => ({ ...f, partDescription: v }))} placeholder="e.g. Engine Oil Filter" />
-          <FormField label="Brand" value={form.brand} onChange={v => setForm(f => ({ ...f, brand: v }))} placeholder="e.g. Cummins" />
-          <FormField label="Applicable Engine / Model" value={form.applicableEngine} onChange={v => setForm(f => ({ ...f, applicableEngine: v }))} placeholder="e.g. Cummins 6BT / 6CT" />
-          <FormField label="Supplier" value={form.supplier} onChange={v => setForm(f => ({ ...f, supplier: v }))} placeholder="e.g. Cummins Philippines" />
-          <div>
-            <label className="block text-xs font-500 text-muted-foreground mb-1.5">Unit</label>
-            <select value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} className="w-full text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
-              {['pc', 'set', 'gal', 'ltr', 'kg', 'box', 'roll', 'pair'].map(u => <option key={u}>{u}</option>)}
-            </select>
+      {/* Create/Edit Modal */}
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)}
+        title={editPart ? `Edit Part — ${editPart.partNo}` : 'Add New Part'}
+        subtitle={editPart ? 'Update part details and inventory quantities' : 'Enter part details to add to inventory'}
+        size="lg" footer={modalFooter}>
+        <div className="space-y-4">
+          {saveError && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-sm text-red-700">
+              <Icon name="ExclamationCircleIcon" size={16} className="flex-shrink-0" />{saveError}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Part No. <span className="text-red-500">*</span></label>
+              <input value={form.partNo} onChange={e => setForm(p => ({ ...p, partNo: e.target.value }))} placeholder="e.g. CUM-3401544"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Brand</label>
+              <input value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))} placeholder="e.g. Cummins"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-500 text-foreground mb-1.5">Description <span className="text-red-500">*</span></label>
+              <input value={form.partDescription} onChange={e => setForm(p => ({ ...p, partDescription: e.target.value }))} placeholder="e.g. Engine Oil Filter"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-500 text-foreground mb-1.5">Applicable Engine</label>
+              <input value={form.applicableEngine} onChange={e => setForm(p => ({ ...p, applicableEngine: e.target.value }))} placeholder="e.g. Cummins 6BT / 6CT"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Supplier</label>
+              <input value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Unit</label>
+              <select value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                {['pc', 'set', 'pail', 'drum', 'gal', 'liter', 'kg', 'box', 'roll'].map(u => <option key={u}>{u}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Unit Cost (₱)</label>
+              <input type="number" min="0" value={form.unitCost} onChange={e => setForm(p => ({ ...p, unitCost: Number(e.target.value) }))}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Selling Price (₱)</label>
+              <input type="number" min="0" value={form.sellingPrice} onChange={e => setForm(p => ({ ...p, sellingPrice: Number(e.target.value) }))}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Stock Qty</label>
+              <input type="number" min="0" value={form.stockQty} onChange={e => setForm(p => ({ ...p, stockQty: Number(e.target.value) }))}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Minimum Stock</label>
+              <input type="number" min="0" value={form.minimumStock} onChange={e => setForm(p => ({ ...p, minimumStock: Number(e.target.value) }))}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Storage Location</label>
+              <input value={form.storageLocation} onChange={e => setForm(p => ({ ...p, storageLocation: e.target.value }))} placeholder="e.g. Shelf A-1"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-500 text-foreground mb-1.5">Remarks</label>
+              <input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Optional notes"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+            </div>
           </div>
-          <FormField label="Unit Cost (₱)" value={String(form.unitCost)} onChange={v => setForm(f => ({ ...f, unitCost: Number(v) || 0 }))} type="number" placeholder="0" />
-          <FormField label="Selling Price (₱)" value={String(form.sellingPrice)} onChange={v => setForm(f => ({ ...f, sellingPrice: Number(v) || 0 }))} type="number" placeholder="0" />
-          <FormField label="Stock Qty" value={String(form.stockQty)} onChange={v => setForm(f => ({ ...f, stockQty: Number(v) || 0 }))} type="number" placeholder="0" />
-          <FormField label="Minimum Stock" value={String(form.minimumStock)} onChange={v => setForm(f => ({ ...f, minimumStock: Number(v) || 0 }))} type="number" placeholder="0" />
-          <FormField label="Storage Location" value={form.storageLocation} onChange={v => setForm(f => ({ ...f, storageLocation: v }))} placeholder="e.g. Shelf A-1" />
-          <div className="col-span-2">
-            <label className="block text-xs font-500 text-muted-foreground mb-1.5">Remarks</label>
-            <textarea value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} rows={2} placeholder="Optional notes..." className="w-full text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none text-foreground" />
+          <div className="bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
+            Reorder status will be automatically calculated based on stock qty vs minimum stock.
           </div>
         </div>
       </Modal>
-    </div>
-  );
-}
 
-function FormField({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
-  return (
-    <div>
-      <label className="block text-xs font-500 text-muted-foreground mb-1.5">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground" />
+      {/* Delete Confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center">
+          <div className="absolute inset-0 bg-foreground/40" onClick={!deleting ? () => setDeleteConfirm(null) : undefined} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-modal w-full max-w-md mx-4 p-6">
+            <div className="flex items-start gap-4 mb-5">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Icon name="TrashIcon" size={20} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-700 text-foreground mb-1">Delete Part</h3>
+                <p className="text-sm text-muted-foreground">Delete <span className="font-600 text-foreground">{deleteConfirm.partNo} — {deleteConfirm.partDescription}</span>? This cannot be undone.</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setDeleteConfirm(null)} disabled={deleting} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={() => handleDelete(deleteConfirm)} disabled={deleting}
+                className="flex items-center gap-2 bg-red-600 text-white text-sm font-500 px-5 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
+                {deleting ? <><Icon name="ArrowPathIcon" size={14} className="animate-spin" />Deleting...</> : 'Delete Part'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

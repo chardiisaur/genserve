@@ -1,23 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
-export async function GET() {
+/** Collision-safe part ID */
+function newPartId(): string {
+  return `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const parts = await prisma.partInventory.findMany({ orderBy: { partDescription: 'asc' } });
     return NextResponse.json(parts);
-  } catch {
+  } catch (err: unknown) {
+    console.error('[PARTS GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch parts' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
+    if (!body.partDescription || !body.partNo) {
+      return NextResponse.json({ error: 'partNo and partDescription are required' }, { status: 400 });
+    }
     const part = await prisma.partInventory.create({
-      data: { partId: `pt-${Date.now()}`, ...body },
+      data: { partId: newPartId(), ...body },
     });
     return NextResponse.json(part, { status: 201 });
-  } catch {
+  } catch (err: unknown) {
+    console.error('[PARTS CREATE ERROR]', err);
+    const code = (err as any)?.code;
+    if (code === 'P2002') return NextResponse.json({ error: 'Duplicate record.' }, { status: 409 });
     return NextResponse.json({ error: 'Failed to create part' }, { status: 500 });
   }
 }
