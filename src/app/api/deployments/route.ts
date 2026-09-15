@@ -13,8 +13,39 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth();
   if (isNextResponse(auth)) return auth;
   try {
-    const deployments = await prisma.deployment.findMany({ orderBy: { departureDate: 'desc' } });
-    return NextResponse.json(deployments);
+    const { searchParams } = new URL(req.url);
+    const jobOrderNo = searchParams.get('jobOrderNo');
+    const technicianId = searchParams.get('technicianId');
+    const clientId = searchParams.get('clientId');
+
+    const where: Record<string, unknown> = {};
+    if (jobOrderNo) where.jobOrderNo = jobOrderNo;
+    if (technicianId) where.technicianId = technicianId;
+    if (clientId) where.clientId = clientId;
+
+    const deployments = await prisma.deployment.findMany({
+      where,
+      orderBy: { departureDate: 'desc' },
+      include: {
+        serviceJob: {
+          select: {
+            jobOrderNo: true,
+            client: { select: { clientName: true } },
+            site: { select: { siteName: true } },
+          },
+        },
+        technician: { select: { technicianName: true } },
+      },
+    });
+
+    const result = deployments.map((d) => ({
+      ...d,
+      clientName: d.serviceJob?.client?.clientName ?? d.clientId,
+      siteName: d.serviceJob?.site?.siteName ?? d.siteId,
+      technicianName: d.technician?.technicianName ?? d.technicianId,
+    }));
+
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error('[DEPLOYMENT GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch deployments' }, { status: 500 });

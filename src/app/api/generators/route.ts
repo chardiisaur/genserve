@@ -17,8 +17,20 @@ export async function GET(req: NextRequest) {
     const where: Record<string, string> = {};
     if (clientId) where.clientId = clientId;
     if (siteId) where.siteId = siteId;
-    const generators = await prisma.generator.findMany({ where, orderBy: { generatorId: 'asc' } });
-    return NextResponse.json(generators);
+    const generators = await prisma.generator.findMany({
+      where,
+      orderBy: { generatorId: 'asc' },
+      include: {
+        client: { select: { clientName: true } },
+        site: { select: { siteName: true } },
+      },
+    });
+    const result = generators.map((g) => ({
+      ...g,
+      clientName: g.client?.clientName ?? g.clientId,
+      siteName: g.site?.siteName ?? g.siteId,
+    }));
+    return NextResponse.json(result);
   } catch (err: unknown) {
     console.error('[GENERATOR GET ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch generators' }, { status: 500 });

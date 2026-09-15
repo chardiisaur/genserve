@@ -22,11 +22,31 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const job = await prisma.serviceJob.findUnique({
       where: { jobOrderNo: id },
       include: {
-        client: { select: { clientName: true } },
-        site: { select: { siteName: true } },
-        generator: { select: { assetNo: true, brand: true, model: true } },
-        leadTechnician: { select: { technicianName: true } },
-        additionalTechnician: { select: { technicianName: true } },
+        client: { select: { clientName: true, email: true, contactNo: true } },
+        site: { select: { siteName: true, siteAddress: true, siteContact: true } },
+        generator: { select: { assetNo: true, brand: true, model: true, ratedKva: true, engineBrand: true, engineModel: true } },
+        leadTechnician: { select: { technicianName: true, position: true, contactNo: true } },
+        additionalTechnician: { select: { technicianName: true, position: true } },
+        partsUsed: {
+          include: {
+            part: { select: { partDescription: true, partNo: true, unit: true } },
+            technician: { select: { technicianName: true } },
+          },
+        },
+        expenses: {
+          include: {
+            technician: { select: { technicianName: true } },
+          },
+        },
+        fieldLogs: {
+          orderBy: { timestamp: 'desc' },
+        },
+        deployments: {
+          include: {
+            technician: { select: { technicianName: true } },
+          },
+        },
+        quotations: true,
       },
     });
     if (!job) return NextResponse.json({ error: 'Not found' }, { status: 404 });

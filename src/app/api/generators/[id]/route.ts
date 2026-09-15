@@ -7,9 +7,40 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
-    const gen = await prisma.generator.findUnique({ where: { generatorId: id } });
+    const gen = await prisma.generator.findUnique({
+      where: { generatorId: id },
+      include: {
+        client: { select: { clientName: true } },
+        site: { select: { siteName: true } },
+        serviceJobs: {
+          orderBy: { requestDate: 'desc' },
+          take: 10,
+          include: {
+            leadTechnician: { select: { technicianName: true } },
+          },
+        },
+        pmsRecords: {
+          orderBy: { pmsDate: 'desc' },
+          take: 10,
+          include: {
+            technician: { select: { technicianName: true } },
+          },
+        },
+        partsUsed: {
+          orderBy: { dateUsed: 'desc' },
+          take: 10,
+          include: {
+            part: { select: { partDescription: true, partNo: true } },
+          },
+        },
+      },
+    });
     if (!gen) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(gen);
+    return NextResponse.json({
+      ...gen,
+      clientName: gen.client?.clientName ?? gen.clientId,
+      siteName: gen.site?.siteName ?? gen.siteId,
+    });
   } catch (err: unknown) {
     console.error('[GENERATOR GET BY ID ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch generator' }, { status: 500 });

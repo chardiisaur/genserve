@@ -7,9 +7,27 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
-    const site = await prisma.site.findUnique({ where: { siteId: id } });
+    const site = await prisma.site.findUnique({
+      where: { siteId: id },
+      include: {
+        client: { select: { clientName: true } },
+        generators: {
+          orderBy: { generatorId: 'asc' },
+          select: { generatorId: true, assetNo: true, brand: true, model: true, ratedKva: true, status: true },
+        },
+        _count: {
+          select: { serviceJobs: true, pmsRecords: true, deployments: true },
+        },
+      },
+    });
     if (!site) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(site);
+    return NextResponse.json({
+      ...site,
+      clientName: site.client?.clientName ?? site.clientId,
+      serviceJobCount: site._count.serviceJobs,
+      pmsRecordCount: site._count.pmsRecords,
+      deploymentCount: site._count.deployments,
+    });
   } catch (err: unknown) {
     console.error('[SITE GET BY ID ERROR]', err);
     return NextResponse.json({ error: 'Failed to fetch site' }, { status: 500 });
