@@ -11,6 +11,7 @@ interface User {
   role: 'ADMIN' | 'MANAGER' | 'FIELD_TECHNICIAN';
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
+  updatedAt: string;
 }
 
 const ROLES: { value: User['role']; label: string }[] = [
@@ -32,7 +33,12 @@ const roleLabels: Record<User['role'], string> = {
 };
 
 function getInitials(name: string): string {
-  return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 interface UserFormData {
@@ -55,6 +61,20 @@ const emptyForm: UserFormData = {
   password: '',
   status: 'ACTIVE',
 };
+
+async function apiFetch(url: string, options?: RequestInit): Promise<{ ok: boolean; status: number; data: any }> {
+  console.log(`[UserManagement] ${options?.method ?? 'GET'} ${url}`, options?.body ? JSON.parse(options.body as string) : '');
+  const res = await fetch(url, options);
+  let data: any;
+  try {
+    data = await res.json();
+  } catch (parseErr) {
+    console.error(`[UserManagement] Failed to parse JSON from ${url}:`, parseErr);
+    data = { error: `Server returned non-JSON response (status ${res.status})` };
+  }
+  console.log(`[UserManagement] Response ${res.status} from ${url}:`, data);
+  return { ok: res.ok, status: res.status, data };
+}
 
 export default function UserManagementScreen() {
   const [users, setUsers] = useState<User[]>([]);
@@ -82,19 +102,23 @@ export default function UserManagementScreen() {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const fetchUsers = useCallback(async () => {
+    console.log('[UserManagement] fetchUsers() called');
     setLoading(true);
     setGlobalError('');
     try {
-      let res = await fetch('/api/users');
-      if (!res.ok) {
-        const json = await res.json();
-        setGlobalError(json.error ?? 'Failed to load users.');
+      const { ok, data } = await apiFetch('/api/users');
+      if (!ok) {
+        const msg = data?.error ?? 'Failed to load users.';
+        console.error('[UserManagement] fetchUsers failed:', msg);
+        setGlobalError(msg);
         return;
       }
-      const json = await res.json();
-      setUsers(json.users ?? []);
-    } catch {
-      setGlobalError('Unable to connect to server.');
+      const userList: User[] = data.users ?? [];
+      console.log('[UserManagement] fetchUsers success — count:', userList.length);
+      setUsers(userList);
+    } catch (err) {
+      console.error('[UserManagement] fetchUsers network error:', err);
+      setGlobalError('Unable to connect to server. Check the browser console for details.');
     } finally {
       setLoading(false);
     }
@@ -142,27 +166,32 @@ export default function UserManagementScreen() {
   const handleSave = async () => {
     setFormError('');
     setFormSuccess('');
+
+    // Client-side validation
     if (!form.name.trim()) { setFormError('Name is required.'); return; }
     if (!form.email.trim()) { setFormError('Email is required.'); return; }
     if (!editingUser && !form.password.trim()) { setFormError('Password is required for new users.'); return; }
+    if (!editingUser && form.password.length < 6) { setFormError('Password must be at least 6 characters.'); return; }
 
     setIsSaving(true);
     try {
-      let res: Response;
+      let result: { ok: boolean; status: number; data: any };
+
       if (editingUser) {
-        const body: Record<string, string> = {
-          name: form.name,
-          email: form.email,
-          role: form.role,
-          status: form.status,
-        };
-        res = await fetch(`/api/users/${editingUser.id}`, {
+        console.log('[UserManagement] handleSave — editing user:', editingUser.id);
+        result = await apiFetch(`/api/users/${editingUser.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            name: form.name,
+            email: form.email,
+            role: form.role,
+            status: form.status,
+          }),
         });
       } else {
-        res = await fetch('/api/users', {
+        console.log('[UserManagement] handleSave — creating new user');
+        result = await apiFetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -175,17 +204,30 @@ export default function UserManagementScreen() {
         });
       }
 
-      const json = await res.json();
-      if (!res.ok) {
-        setFormError(json.error ?? 'Failed to save user.');
+      if (!result.ok) {
+        const msg = result.data?.error ?? 'Failed to save user.';
+        console.error('[UserManagement] handleSave failed:', msg, 'HTTP', result.status);
+        setFormError(msg);
         return;
       }
 
+      const savedUser: User = result.data.user;
+      console.log('[UserManagement] handleSave success — user:', savedUser.id, savedUser.name, savedUser.email);
       setFormSuccess(editingUser ? 'User updated successfully.' : 'User created successfully.');
+
+      // Immediately update local state so the table reflects the change without waiting for refetch
+      if (editingUser) {
+        setUsers((prev) => prev.map((u) => (u.id === savedUser.id ? savedUser : u)));
+      } else {
+        setUsers((prev) => [...prev, savedUser]);
+      }
+
+      // Also do a full refetch to confirm DB state
       await fetchUsers();
       setTimeout(() => setShowModal(false), 800);
-    } catch {
-      setFormError('Unable to connect to server.');
+    } catch (err) {
+      console.error('[UserManagement] handleSave network error:', err);
+      setFormError('Unable to connect to server. Check the browser console for details.');
     } finally {
       setIsSaving(false);
     }
@@ -193,19 +235,24 @@ export default function UserManagementScreen() {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
+    console.log('[UserManagement] handleDelete — user:', deleteConfirm.id, deleteConfirm.name);
     setIsDeleting(true);
     try {
-      let res = await fetch(`/api/users/${deleteConfirm.id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok) {
-        setGlobalError(json.error ?? 'Failed to delete user.');
+      const { ok, data } = await apiFetch(`/api/users/${deleteConfirm.id}`, { method: 'DELETE' });
+      if (!ok) {
+        const msg = data?.error ?? 'Failed to delete user.';
+        console.error('[UserManagement] handleDelete failed:', msg);
+        setGlobalError(msg);
         setDeleteConfirm(null);
         return;
       }
+      console.log('[UserManagement] handleDelete success — removed user:', deleteConfirm.id);
+      setUsers((prev) => prev.filter((u) => u.id !== deleteConfirm.id));
       await fetchUsers();
       setDeleteConfirm(null);
-    } catch {
-      setGlobalError('Unable to connect to server.');
+    } catch (err) {
+      console.error('[UserManagement] handleDelete network error:', err);
+      setGlobalError('Unable to connect to server. Check the browser console for details.');
     } finally {
       setIsDeleting(false);
     }
@@ -213,20 +260,25 @@ export default function UserManagementScreen() {
 
   const handleToggleStatus = async (user: User) => {
     const newStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    console.log('[UserManagement] handleToggleStatus — user:', user.id, 'new status:', newStatus);
     try {
-      let res = await fetch(`/api/users/${user.id}`, {
+      const { ok, data } = await apiFetch(`/api/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        setGlobalError(json.error ?? 'Failed to update status.');
+      if (!ok) {
+        const msg = data?.error ?? 'Failed to update status.';
+        console.error('[UserManagement] handleToggleStatus failed:', msg);
+        setGlobalError(msg);
         return;
       }
-      await fetchUsers();
-    } catch {
-      setGlobalError('Unable to connect to server.');
+      const updatedUser: User = data.user;
+      console.log('[UserManagement] handleToggleStatus success — new status:', updatedUser.status);
+      setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    } catch (err) {
+      console.error('[UserManagement] handleToggleStatus network error:', err);
+      setGlobalError('Unable to connect to server. Check the browser console for details.');
     }
   };
 
@@ -234,26 +286,35 @@ export default function UserManagementScreen() {
     if (!passwordTarget) return;
     setPasswordError('');
     setPasswordSuccess('');
+
+    // Client-side validation
     if (!passwordForm.newPassword.trim()) { setPasswordError('New password is required.'); return; }
     if (passwordForm.newPassword.length < 6) { setPasswordError('Password must be at least 6 characters.'); return; }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) { setPasswordError('Password confirmation does not match.'); return; }
 
+    console.log('[UserManagement] handleChangePassword — user:', passwordTarget.id, passwordTarget.name);
     setIsSavingPassword(true);
     try {
-      let res = await fetch(`/api/users/${passwordTarget.id}`, {
+      const { ok, data } = await apiFetch(`/api/users/${passwordTarget.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword: passwordForm.newPassword, confirmPassword: passwordForm.confirmPassword }),
+        body: JSON.stringify({
+          newPassword: passwordForm.newPassword,
+          confirmPassword: passwordForm.confirmPassword,
+        }),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        setPasswordError(json.error ?? 'Failed to change password.');
+      if (!ok) {
+        const msg = data?.error ?? 'Failed to change password.';
+        console.error('[UserManagement] handleChangePassword failed:', msg);
+        setPasswordError(msg);
         return;
       }
+      console.log('[UserManagement] handleChangePassword success — user:', passwordTarget.id);
       setPasswordSuccess('Password changed successfully.');
       setTimeout(() => setShowPasswordModal(false), 800);
-    } catch {
-      setPasswordError('Unable to connect to server.');
+    } catch (err) {
+      console.error('[UserManagement] handleChangePassword network error:', err);
+      setPasswordError('Unable to connect to server. Check the browser console for details.');
     } finally {
       setIsSavingPassword(false);
     }
@@ -265,14 +326,16 @@ export default function UserManagementScreen() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-xl font-600 text-foreground">User Management</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage system accounts — create, edit, or remove users and assign roles.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage system accounts — create, edit, or remove users and assign roles.
+          </p>
         </div>
 
         {/* Global error */}
         {globalError && (
           <div className="flex items-center gap-2 px-4 py-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
             <Icon name="ExclamationCircleIcon" size={16} />
-            {globalError}
+            <span className="flex-1">{globalError}</span>
             <button onClick={() => setGlobalError('')} className="ml-auto text-red-400 hover:text-red-300">
               <Icon name="XMarkIcon" size={14} />
             </button>
@@ -282,7 +345,11 @@ export default function UserManagementScreen() {
         {/* Toolbar */}
         <div className="flex items-center justify-between gap-3 mb-5">
           <div className="relative flex-1 max-w-xs">
-            <Icon name="MagnifyingGlassIcon" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Icon
+              name="MagnifyingGlassIcon"
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
             <input
               type="text"
               placeholder="Search users..."
@@ -304,8 +371,18 @@ export default function UserManagementScreen() {
         <div className="grid grid-cols-3 gap-3 mb-5">
           {[
             { label: 'Total Users', value: users.length, icon: 'UsersIcon', color: 'text-blue-400' },
-            { label: 'Active', value: users.filter((u) => u.status === 'ACTIVE').length, icon: 'CheckCircleIcon', color: 'text-green-400' },
-            { label: 'Inactive', value: users.filter((u) => u.status === 'INACTIVE').length, icon: 'XCircleIcon', color: 'text-muted-foreground' },
+            {
+              label: 'Active',
+              value: users.filter((u) => u.status === 'ACTIVE').length,
+              icon: 'CheckCircleIcon',
+              color: 'text-green-400',
+            },
+            {
+              label: 'Inactive',
+              value: users.filter((u) => u.status === 'INACTIVE').length,
+              icon: 'XCircleIcon',
+              color: 'text-muted-foreground',
+            },
           ].map((stat) => (
             <div key={stat.label} className="bg-card border border-border rounded-lg p-4 flex items-center gap-3">
               <Icon name={stat.icon as Parameters<typeof Icon>[0]['name']} size={20} className={stat.color} />
@@ -328,22 +405,37 @@ export default function UserManagementScreen() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">User</th>
-                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Email</th>
-                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Role</th>
-                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">Created</th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                    User
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-600 text-muted-foreground uppercase tracking-wider">
+                    Created
+                  </th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">No users found.</td>
+                    <td colSpan={6} className="text-center py-10 text-muted-foreground text-sm">
+                      No users found.
+                    </td>
                   </tr>
                 )}
                 {filtered.map((user) => (
-                  <tr key={user.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={user.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-600 flex-shrink-0">
@@ -354,7 +446,9 @@ export default function UserManagementScreen() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-500 ${roleColors[user.role]}`}>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-500 ${roleColors[user.role]}`}
+                      >
                         {roleLabels[user.role]}
                       </span>
                     </td>
@@ -366,7 +460,11 @@ export default function UserManagementScreen() {
                           user.status === 'ACTIVE' ?'text-green-400 border-green-500/20 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/20' :'text-muted-foreground border-border hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/20'
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'ACTIVE' ? 'bg-green-400' : 'bg-muted-foreground'}`} />
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            user.status === 'ACTIVE' ? 'bg-green-400' : 'bg-muted-foreground'
+                          }`}
+                        />
                         {user.status === 'ACTIVE' ? 'Active' : 'Inactive'}
                       </button>
                     </td>
@@ -411,8 +509,13 @@ export default function UserManagementScreen() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <h2 className="text-sm font-600 text-foreground">{editingUser ? 'Edit User' : 'Create New User'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+              <h2 className="text-sm font-600 text-foreground">
+                {editingUser ? 'Edit User' : 'Create New User'}
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors"
+              >
                 <Icon name="XMarkIcon" size={16} />
               </button>
             </div>
@@ -445,7 +548,7 @@ export default function UserManagementScreen() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="user@indentrade.com.ph"
+                  placeholder="user@example.com"
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -457,7 +560,9 @@ export default function UserManagementScreen() {
                   className="w-full px-3 py-2 text-sm bg-muted border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   {ROLES.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -469,7 +574,7 @@ export default function UserManagementScreen() {
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                      placeholder="••••••••"
+                      placeholder="Min. 6 characters"
                       className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                     <button
@@ -524,7 +629,10 @@ export default function UserManagementScreen() {
                 <h2 className="text-sm font-600 text-foreground">Change Password</h2>
                 <p className="text-xs text-muted-foreground mt-0.5">{passwordTarget.name}</p>
               </div>
-              <button onClick={() => setShowPasswordModal(false)} className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors">
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors"
+              >
                 <Icon name="XMarkIcon" size={16} />
               </button>
             </div>
@@ -551,13 +659,19 @@ export default function UserManagementScreen() {
                     placeholder="Min. 6 characters"
                     className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <button type="button" onClick={() => setShowNewPw((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPw((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
                     <Icon name={showNewPw ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
                   </button>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-500 text-muted-foreground mb-1.5">Confirm New Password</label>
+                <label className="block text-xs font-500 text-muted-foreground mb-1.5">
+                  Confirm New Password
+                </label>
                 <div className="relative">
                   <input
                     type={showConfirmPw ? 'text' : 'password'}
@@ -566,14 +680,22 @@ export default function UserManagementScreen() {
                     placeholder="Re-enter new password"
                     className="w-full px-3 py-2 pr-10 text-sm bg-muted border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   />
-                  <button type="button" onClick={() => setShowConfirmPw((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPw((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
                     <Icon name={showConfirmPw ? 'EyeSlashIcon' : 'EyeIcon'} size={15} />
                   </button>
                 </div>
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-              <button onClick={() => setShowPasswordModal(false)} disabled={isSavingPassword} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50">
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                disabled={isSavingPassword}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50"
+              >
                 Cancel
               </button>
               <button
