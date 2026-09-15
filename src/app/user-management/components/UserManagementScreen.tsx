@@ -271,11 +271,15 @@ export default function UserManagementScreen() {
         const msg = data?.error ?? 'Failed to update status.';
         console.error('[UserManagement] handleToggleStatus failed:', msg);
         setGlobalError(msg);
+        // Refetch to ensure UI reflects actual DB state after a rejected toggle
+        await fetchUsers();
         return;
       }
       const updatedUser: User = data.user;
       console.log('[UserManagement] handleToggleStatus success — new status:', updatedUser.status);
+      // Optimistic update first, then confirm from DB
       setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+      await fetchUsers();
     } catch (err) {
       console.error('[UserManagement] handleToggleStatus network error:', err);
       setGlobalError('Unable to connect to server. Check the browser console for details.');
