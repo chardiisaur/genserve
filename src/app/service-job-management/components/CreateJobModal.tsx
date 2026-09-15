@@ -4,10 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import Modal from '@/components/ui/Modal';
 import Icon from '@/components/ui/AppIcon';
-import {
-  ServiceJob, clients, sitesByClient, generatorsBySite,
-  technicians, serviceTypes,
-} from './mockData';
+import { ServiceJob } from './mockData';
 
 type FormStep = 'details' | 'asset' | 'assignment' | 'scheduling' | 'notes';
 
@@ -51,42 +48,67 @@ interface CreateJobModalProps {
   open: boolean;
   editJob: ServiceJob | null;
   onClose: () => void;
-  onCreate: (data: Partial<ServiceJob>) => void;
-  onUpdate: (job: ServiceJob) => void;
+  onCreate: (data: Partial<ServiceJob>) => Promise<void>;
+  onUpdate: (job: ServiceJob) => Promise<void>;
 }
 
 export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpdate }: CreateJobModalProps) {
   const [step, setStep] = useState<FormStep>('details');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Dynamic data from API
+  const [clients, setClients] = useState<{ clientId: string; clientName: string }[]>([]);
+  const [sites, setSites] = useState<{ siteId: string; siteName: string; clientId: string }[]>([]);
+  const [generators, setGenerators] = useState<{ generatorId: string; assetNo: string; brand: string; model: string; siteId: string }[]>([]);
+  const [technicians, setTechnicians] = useState<{ technicianId: string; technicianName: string }[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<{ serviceTypeId: string; serviceType: string; defaultPriority: string }[]>([]);
 
   const isEdit = !!editJob;
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    reset,
-    setValue,
-    formState: { errors },
-  } = useForm<CreateJobFormData>({
-    defaultValues: {
-      priority: 'Normal',
-      status: 'Open',
-      billingStatus: 'Pending',
-    },
+  const { register, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm<CreateJobFormData>({
+    defaultValues: { priority: 'Normal', status: 'Open', billingStatus: 'Pending' },
   });
 
   const selectedClientId = watch('clientId');
   const selectedSiteId = watch('siteId');
   const selectedServiceType = watch('serviceType');
-  const availableSites = selectedClientId ? (sitesByClient[selectedClientId] || []) : [];
-  const availableGenerators = selectedSiteId ? (generatorsBySite[selectedSiteId] || []) : [];
+
+  const availableSites = selectedClientId ? sites.filter(s => s.clientId === selectedClientId) : sites;
+  const availableGenerators = selectedSiteId ? generators.filter(g => g.siteId === selectedSiteId) : generators;
+
+  // Fetch reference data when modal opens
+  useEffect(() => {
+    if (!open) return;
+    Promise.all([
+      fetch('/api/clients').then(r => r.ok ? r.json() : []),
+      fetch('/api/sites').then(r => r.ok ? r.json() : []),
+      fetch('/api/generators').then(r => r.ok ? r.json() : []),
+      fetch('/api/technicians').then(r => r.ok ? r.json() : []),
+      fetch('/api/service-types').then(r => r.ok ? r.json() : []),
+    ]).then(([c, s, g, t, st]) => {
+      setClients(c);
+      setSites(s);
+      setGenerators(g);
+      setTechnicians(t);
+      setServiceTypes(st.length > 0 ? st : [
+        { serviceTypeId: 'st-001', serviceType: 'PMS', defaultPriority: 'Normal' },
+        { serviceTypeId: 'st-002', serviceType: 'Troubleshooting', defaultPriority: 'High' },
+        { serviceTypeId: 'st-003', serviceType: 'Repair', defaultPriority: 'High' },
+        { serviceTypeId: 'st-004', serviceType: 'Commissioning', defaultPriority: 'High' },
+        { serviceTypeId: 'st-005', serviceType: 'Synchronization', defaultPriority: 'Critical' },
+        { serviceTypeId: 'st-006', serviceType: 'Inspection', defaultPriority: 'Normal' },
+        { serviceTypeId: 'st-007', serviceType: 'Load Test', defaultPriority: 'High' },
+        { serviceTypeId: 'st-008', serviceType: 'Emergency Call', defaultPriority: 'Critical' },
+      ]);
+    }).catch(() => {});
+  }, [open]);
 
   // Auto-set priority when service type changes
   useEffect(() => {
-    const st = serviceTypes.find(s => s.name === selectedServiceType);
+    const st = serviceTypes.find(s => s.serviceType === selectedServiceType);
     if (st) setValue('priority', st.defaultPriority);
-  }, [selectedServiceType, setValue]);
+  }, [selectedServiceType, setValue, serviceTypes]);
 
   // Populate form when editing
   useEffect(() => {
@@ -99,6 +121,7 @@ export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpd
         siteId: editJob.siteId,
         generatorId: editJob.generatorId,
         leadTechnicianId: editJob.leadTechnicianId,
+        additionalTechnicianId: '',
         requestDate: editJob.requestDate,
         scheduledDate: editJob.scheduledDate,
         startDate: editJob.startDate || '',
@@ -119,62 +142,60 @@ export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpd
       });
       setStep('details');
     } else if (!editJob && open) {
-      reset({
-        priority: 'Normal',
-        status: 'Open',
-        billingStatus: 'Pending',
-      });
+      reset({ priority: 'Normal', status: 'Open', billingStatus: 'Pending' });
       setStep('details');
     }
+    setSubmitError(null);
   }, [editJob, open, reset]);
 
   const onSubmit = async (data: CreateJobFormData) => {
     setIsSubmitting(true);
-    // Backend integration: POST /api/service-jobs (create) or PUT /api/service-jobs/:id (update)
-    await new Promise(r => setTimeout(r, 900));
+    setSubmitError(null);
+    try {
+      const jobData: Partial<ServiceJob> = {
+        serviceType: data.serviceType,
+        problem: data.problem,
+        priority: data.priority as ServiceJob['priority'],
+        clientId: data.clientId,
+        clientName: clients.find(c => c.clientId === data.clientId)?.clientName || data.clientId,
+        siteId: data.siteId,
+        siteName: availableSites.find(s => s.siteId === data.siteId)?.siteName || data.siteId,
+        generatorId: data.generatorId,
+        generatorName: availableGenerators.find(g => g.generatorId === data.generatorId)
+          ? `${availableGenerators.find(g => g.generatorId === data.generatorId)?.assetNo} / ${availableGenerators.find(g => g.generatorId === data.generatorId)?.brand} ${availableGenerators.find(g => g.generatorId === data.generatorId)?.model}`
+          : data.generatorId,
+        leadTechnicianId: data.leadTechnicianId || undefined,
+        leadTechnicianName: technicians.find(t => t.technicianId === data.leadTechnicianId)?.technicianName || data.leadTechnicianId,
+        additionalTechnicianId: data.additionalTechnicianId || undefined,
+        additionalTechnicianName: technicians.find(t => t.technicianId === data.additionalTechnicianId)?.technicianName || undefined,
+        requestDate: data.requestDate || new Date().toLocaleDateString('en-PH'),
+        scheduledDate: data.scheduledDate || '',
+        startDate: data.startDate || undefined,
+        completionDate: data.completionDate || undefined,
+        runningHours: data.runningHours ? Number(data.runningHours) : undefined,
+        status: data.status as ServiceJob['status'],
+        customerRepresentative: data.customerRepresentative || undefined,
+        customerContact: data.customerContact || undefined,
+        findings: data.findings || undefined,
+        workPerformed: data.workPerformed || undefined,
+        testingResults: data.testingResults || undefined,
+        recommendations: data.recommendations || undefined,
+        partsMaterialsSummary: data.partsMaterialsSummary || undefined,
+        serviceReportNo: data.serviceReportNo || undefined,
+        quotationNo: data.quotationNo || undefined,
+        billingStatus: data.billingStatus as ServiceJob['billingStatus'],
+        remarks: data.remarks || undefined,
+      };
 
-    const clientName = clients.find(c => c.id === data.clientId)?.name || '';
-    const siteName = availableSites.find(s => s.id === data.siteId)?.name || '';
-    const generatorName = availableGenerators.find(g => g.id === data.generatorId)?.name || '';
-    const leadTechnicianName = technicians.find(t => t.id === data.leadTechnicianId)?.name || '';
-
-    const jobData: Partial<ServiceJob> = {
-      serviceType: data.serviceType,
-      problem: data.problem,
-      priority: data.priority as ServiceJob['priority'],
-      clientId: data.clientId,
-      clientName,
-      siteId: data.siteId,
-      siteName,
-      generatorId: data.generatorId,
-      generatorName,
-      leadTechnicianId: data.leadTechnicianId,
-      leadTechnicianName,
-      requestDate: data.requestDate || '09 Sep 2026',
-      scheduledDate: data.scheduledDate || '10 Sep 2026',
-      startDate: data.startDate || undefined,
-      completionDate: data.completionDate || undefined,
-      runningHours: data.runningHours ? Number(data.runningHours) : undefined,
-      status: data.status as ServiceJob['status'],
-      customerRepresentative: data.customerRepresentative || undefined,
-      customerContact: data.customerContact || undefined,
-      findings: data.findings || undefined,
-      workPerformed: data.workPerformed || undefined,
-      testingResults: data.testingResults || undefined,
-      recommendations: data.recommendations || undefined,
-      partsMaterialsSummary: data.partsMaterialsSummary || undefined,
-      serviceReportNo: data.serviceReportNo || undefined,
-      quotationNo: data.quotationNo || undefined,
-      billingStatus: data.billingStatus as ServiceJob['billingStatus'],
-      remarks: data.remarks || undefined,
-    };
-
-    setIsSubmitting(false);
-
-    if (isEdit && editJob) {
-      onUpdate({ ...editJob, ...jobData });
-    } else {
-      onCreate(jobData);
+      if (isEdit && editJob) {
+        await onUpdate({ ...editJob, ...jobData });
+      } else {
+        await onCreate(jobData);
+      }
+    } catch (err: unknown) {
+      setSubmitError((err as Error).message || 'Failed to save job. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -182,45 +203,22 @@ export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpd
 
   const footer = (
     <div className="flex items-center justify-between w-full">
-      <button
-        type="button"
-        onClick={() => {
-          if (currentStepIdx > 0) setStep(STEPS[currentStepIdx - 1].id);
-          else onClose();
-        }}
-        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg hover:bg-muted"
-      >
+      <button type="button" onClick={() => { if (currentStepIdx > 0) setStep(STEPS[currentStepIdx - 1].id); else onClose(); }}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2 rounded-lg hover:bg-muted">
         <Icon name="ChevronLeftIcon" size={15} />
         {currentStepIdx === 0 ? 'Cancel' : 'Back'}
       </button>
       <div className="flex items-center gap-2">
+        {submitError && <p className="text-xs text-red-600 max-w-xs truncate">{submitError}</p>}
         {currentStepIdx < STEPS.length - 1 ? (
-          <button
-            type="button"
-            onClick={() => setStep(STEPS[currentStepIdx + 1].id)}
-            className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-500 px-4 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150"
-          >
-            Next
-            <Icon name="ChevronRightIcon" size={15} />
+          <button type="button" onClick={() => setStep(STEPS[currentStepIdx + 1].id)}
+            className="flex items-center gap-1.5 bg-primary text-primary-foreground text-sm font-500 px-4 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150">
+            Next<Icon name="ChevronRightIcon" size={15} />
           </button>
         ) : (
-          <button
-            type="submit"
-            form="create-job-form"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed min-w-[120px] justify-center"
-          >
-            {isSubmitting ? (
-              <>
-                <Icon name="ArrowPathIcon" size={15} className="animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Icon name="CheckIcon" size={15} />
-                {isEdit ? 'Update Job' : 'Create Job'}
-              </>
-            )}
+          <button type="submit" form="create-job-form" disabled={isSubmitting}
+            className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed min-w-[120px] justify-center">
+            {isSubmitting ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" />Saving...</> : <><Icon name="CheckIcon" size={15} />{isEdit ? 'Update Job' : 'Create Job'}</>}
           </button>
         )}
       </div>
@@ -228,425 +226,198 @@ export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpd
   );
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={isEdit ? `Edit Job — ${editJob?.jobOrderNo}` : 'Create New Service Job'}
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Job — ${editJob?.jobOrderNo}` : 'Create New Service Job'}
       subtitle={isEdit ? 'Update job details, assignment, and field notes' : 'Fill in all required fields to create a new service job'}
-      size="xl"
-      footer={footer}
-    >
+      size="xl" footer={footer}>
       {/* Step indicator */}
       <div className="flex items-center gap-0 mb-6 overflow-x-auto scrollbar-thin pb-1">
         {STEPS.map((s, i) => (
           <React.Fragment key={s.id}>
-            <button
-              type="button"
-              onClick={() => setStep(s.id)}
-              className={`
-                flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-500 transition-all duration-150 whitespace-nowrap flex-shrink-0
-                ${step === s.id
-                  ? 'bg-primary text-primary-foreground'
-                  : i < currentStepIdx
-                    ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' :'text-muted-foreground hover:bg-muted'
-                }
-              `}
-            >
-              {i < currentStepIdx ? (
-                <Icon name="CheckCircleIcon" size={14} />
-              ) : (
-                <Icon name={s.icon as Parameters<typeof Icon>[0]['name']} size={14} />
-              )}
+            <button type="button" onClick={() => setStep(s.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-500 transition-all duration-150 whitespace-nowrap flex-shrink-0 ${step === s.id ? 'bg-primary text-primary-foreground' : i < currentStepIdx ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
+              <Icon name={s.icon as Parameters<typeof Icon>[0]['name']} size={13} />
               {s.label}
             </button>
-            {i < STEPS.length - 1 && (
-              <Icon name="ChevronRightIcon" size={12} className="text-muted-foreground flex-shrink-0 mx-0.5" />
-            )}
+            {i < STEPS.length - 1 && <Icon name="ChevronRightIcon" size={12} className="text-muted-foreground/40 flex-shrink-0 mx-0.5" />}
           </React.Fragment>
         ))}
       </div>
 
-      <form id="create-job-form" onSubmit={handleSubmit(onSubmit)} noValidate>
-        {/* Step: Details */}
+      <form id="create-job-form" onSubmit={handleSubmit(onSubmit)}>
         {step === 'details' && (
-          <div className="space-y-4 fade-in">
-            <FormSectionHeader title="Job Information" description="Define the service type, problem description, and priority level." />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Service Type" required error={errors.serviceType?.message}>
-                <select
-                  {...register('serviceType', { required: 'Service type is required' })}
-                  className={inputCls(!!errors.serviceType)}
-                >
-                  <option value="">Select service type</option>
-                  {serviceTypes.map(st => (
-                    <option key={`st-opt-${st.id}`} value={st.name}>{st.name}</option>
-                  ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-xs font-500 text-foreground mb-1.5">Service Type <span className="text-red-500">*</span></label>
+                <select {...register('serviceType', { required: true })}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">Select service type...</option>
+                  {serviceTypes.map(st => <option key={st.serviceTypeId} value={st.serviceType}>{st.serviceType}</option>)}
                 </select>
-              </FormField>
-
-              <FormField label="Priority" required error={errors.priority?.message}>
-                <select
-                  {...register('priority', { required: 'Priority is required' })}
-                  className={inputCls(!!errors.priority)}
-                >
-                  <option value="Normal">Normal</option>
-                  <option value="High">High</option>
-                  <option value="Critical">Critical</option>
+                {errors.serviceType && <p className="text-xs text-red-500 mt-1">Service type is required</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Priority</label>
+                <select {...register('priority')} className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option>Normal</option><option>High</option><option>Critical</option>
                 </select>
-              </FormField>
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Status</label>
+                <select {...register('status')} className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option>Open</option><option>In Progress</option><option>Completed</option><option>Closed</option><option>Cancelled</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-500 text-foreground mb-1.5">Problem / Description</label>
+                <textarea {...register('problem')} rows={3} placeholder="Describe the problem or service request..."
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+              </div>
             </div>
-
-            <FormField
-              label="Problem / Request Description"
-              required
-              error={errors.problem?.message}
-              helper="Describe the issue reported by the client or the scope of the scheduled service."
-            >
-              <textarea
-                {...register('problem', { required: 'Problem description is required', minLength: { value: 10, message: 'Provide at least 10 characters' } })}
-                rows={3}
-                placeholder="e.g. Generator failed to start during power outage. No-crank condition. Client reports no alarm lights on panel."
-                className={`${inputCls(!!errors.problem)} resize-none`}
-              />
-            </FormField>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Current Job Status" required>
-                <select {...register('status')} className={inputCls(false)}>
-                  {['Open', 'In Progress', 'Completed', 'Closed', 'Cancelled'].map(s => (
-                    <option key={`status-opt-${s}`} value={s}>{s}</option>
-                  ))}
-                </select>
-              </FormField>
-
-              <FormField label="Billing Status" required>
-                <select {...register('billingStatus')} className={inputCls(false)}>
-                  {['Pending', 'Quoted', 'Approved', 'Invoiced', 'Paid', 'Cancelled'].map(s => (
-                    <option key={`bill-opt-${s}`} value={s}>{s}</option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-
-            <FormField label="Remarks" helper="Optional internal notes about this job.">
-              <textarea
-                {...register('remarks')}
-                rows={2}
-                placeholder="e.g. Client requires 24-hour notice before site visit. Security badge required."
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
           </div>
         )}
 
-        {/* Step: Asset */}
         {step === 'asset' && (
-          <div className="space-y-4 fade-in">
-            <FormSectionHeader title="Asset Linkage" description="Link this job to a client, site, and specific generator asset." />
-
-            <FormField label="Client" required error={errors.clientId?.message}>
-              <select
-                {...register('clientId', { required: 'Client is required' })}
-                className={inputCls(!!errors.clientId)}
-                onChange={(e) => {
-                  setValue('clientId', e.target.value);
-                  setValue('siteId', '');
-                  setValue('generatorId', '');
-                }}
-              >
-                <option value="">Select client</option>
-                {clients.map(c => (
-                  <option key={`client-opt-${c.id}`} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField
-              label="Site"
-              required
-              error={errors.siteId?.message}
-              helper={!selectedClientId ? 'Select a client first to see available sites.' : undefined}
-            >
-              <select
-                {...register('siteId', { required: 'Site is required' })}
-                className={inputCls(!!errors.siteId)}
-                disabled={!selectedClientId || availableSites.length === 0}
-                onChange={(e) => {
-                  setValue('siteId', e.target.value);
-                  setValue('generatorId', '');
-                }}
-              >
-                <option value="">
-                  {!selectedClientId ? 'Select a client first' : availableSites.length === 0 ? 'No sites for this client' : 'Select site'}
-                </option>
-                {availableSites.map(s => (
-                  <option key={`site-opt-${s.id}`} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField
-              label="Generator Asset"
-              required
-              error={errors.generatorId?.message}
-              helper={!selectedSiteId ? 'Select a site first to see available generators.' : availableGenerators.length === 0 ? 'No generators registered at this site.' : undefined}
-            >
-              <select
-                {...register('generatorId', { required: 'Generator is required' })}
-                className={inputCls(!!errors.generatorId)}
-                disabled={!selectedSiteId || availableGenerators.length === 0}
-              >
-                <option value="">
-                  {!selectedSiteId ? 'Select a site first' : availableGenerators.length === 0 ? 'No generators at this site' : 'Select generator'}
-                </option>
-                {availableGenerators.map(g => (
-                  <option key={`gen-opt-${g.id}`} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField
-              label="Current Running Hours"
-              helper="Generator's running hours at the time of this service. Used to calculate next PMS interval."
-            >
-              <input
-                type="number"
-                {...register('runningHours', {
-                  min: { value: 0, message: 'Running hours cannot be negative' },
-                  max: { value: 99999, message: 'Running hours value seems too high' },
-                })}
-                placeholder="e.g. 8420"
-                className={inputCls(!!errors.runningHours)}
-              />
-              {errors.runningHours && <p className="mt-1 text-2xs text-red-600">{errors.runningHours.message}</p>}
-            </FormField>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Client <span className="text-red-500">*</span></label>
+                <select {...register('clientId', { required: true })}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">Select client...</option>
+                  {clients.map(c => <option key={c.clientId} value={c.clientId}>{c.clientName}</option>)}
+                </select>
+                {errors.clientId && <p className="text-xs text-red-500 mt-1">Client is required</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Site <span className="text-red-500">*</span></label>
+                <select {...register('siteId', { required: true })}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">Select site...</option>
+                  {availableSites.map(s => <option key={s.siteId} value={s.siteId}>{s.siteName}</option>)}
+                </select>
+                {errors.siteId && <p className="text-xs text-red-500 mt-1">Site is required</p>}
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-500 text-foreground mb-1.5">Generator <span className="text-red-500">*</span></label>
+                <select {...register('generatorId', { required: true })}
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">Select generator...</option>
+                  {availableGenerators.map(g => <option key={g.generatorId} value={g.generatorId}>{g.assetNo} / {g.brand} {g.model}</option>)}
+                </select>
+                {errors.generatorId && <p className="text-xs text-red-500 mt-1">Generator is required</p>}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Step: Assignment */}
         {step === 'assignment' && (
-          <div className="space-y-4 fade-in">
-            <FormSectionHeader title="Technician Assignment" description="Assign lead and additional technicians, and record customer contact information." />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Lead Technician" required error={errors.leadTechnicianId?.message}>
-                <select
-                  {...register('leadTechnicianId', { required: 'Lead technician is required' })}
-                  className={inputCls(!!errors.leadTechnicianId)}
-                >
-                  <option value="">Select lead technician</option>
-                  {technicians.map(t => (
-                    <option key={`lead-tech-opt-${t.id}`} value={t.id}>{t.name}</option>
-                  ))}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Lead Technician</label>
+                <select {...register('leadTechnicianId')} className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">Select technician...</option>
+                  {technicians.map(t => <option key={t.technicianId} value={t.technicianId}>{t.technicianName}</option>)}
                 </select>
-              </FormField>
-
-              <FormField label="Additional Technician" helper="Optional — assign a second technician to this job.">
-                <select
-                  {...register('additionalTechnicianId')}
-                  className={inputCls(false)}
-                >
-                  <option value="">None (single technician)</option>
-                  {technicians.map(t => (
-                    <option key={`add-tech-opt-${t.id}`} value={t.id}>{t.name}</option>
-                  ))}
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Additional Technician</label>
+                <select {...register('additionalTechnicianId')} className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option value="">None</option>
+                  {technicians.map(t => <option key={t.technicianId} value={t.technicianId}>{t.technicianName}</option>)}
                 </select>
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                label="Customer Representative"
-                helper="Name of the client contact who will receive the service."
-              >
-                <input
-                  type="text"
-                  {...register('customerRepresentative')}
-                  placeholder="e.g. Engr. Paulo Santos"
-                  className={inputCls(false)}
-                />
-              </FormField>
-
-              <FormField
-                label="Customer Contact No."
-                helper="Mobile or landline number for coordination."
-              >
-                <input
-                  type="tel"
-                  {...register('customerContact')}
-                  placeholder="e.g. 0917-555-1234"
-                  className={inputCls(false)}
-                />
-              </FormField>
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Customer Representative</label>
+                <input {...register('customerRepresentative')} placeholder="Name of customer rep"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Customer Contact</label>
+                <input {...register('customerContact')} placeholder="Contact number"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
             </div>
           </div>
         )}
 
-        {/* Step: Scheduling */}
         {step === 'scheduling' && (
-          <div className="space-y-4 fade-in">
-            <FormSectionHeader title="Scheduling & Dates" description="Set the request date, scheduled service date, and actual start/completion dates." />
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Request Date" required error={errors.requestDate?.message}>
-                <input
-                  type="date"
-                  {...register('requestDate', { required: 'Request date is required' })}
-                  className={inputCls(!!errors.requestDate)}
-                />
-              </FormField>
-
-              <FormField label="Scheduled Date" required error={errors.scheduledDate?.message} helper="When the service visit is planned.">
-                <input
-                  type="date"
-                  {...register('scheduledDate', { required: 'Scheduled date is required' })}
-                  className={inputCls(!!errors.scheduledDate)}
-                />
-              </FormField>
-
-              <FormField label="Actual Start Date" helper="Leave blank if service has not yet started.">
-                <input
-                  type="date"
-                  {...register('startDate')}
-                  className={inputCls(false)}
-                />
-              </FormField>
-
-              <FormField label="Completion Date" helper="Date the service was completed. Required before closing the job.">
-                <input
-                  type="date"
-                  {...register('completionDate')}
-                  className={inputCls(false)}
-                />
-              </FormField>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField label="Service Report No." helper="Auto-assigned on completion. Can be entered manually.">
-                <input
-                  type="text"
-                  {...register('serviceReportNo')}
-                  placeholder="e.g. SR-2026-0094"
-                  className={inputCls(false)}
-                />
-              </FormField>
-
-              <FormField label="Quotation No." helper="Link to an existing quotation in Quotations & Billing.">
-                <input
-                  type="text"
-                  {...register('quotationNo')}
-                  placeholder="e.g. QT-2026-0091"
-                  className={inputCls(false)}
-                />
-              </FormField>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Request Date <span className="text-red-500">*</span></label>
+                <input {...register('requestDate', { required: true })} type="date"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                {errors.requestDate && <p className="text-xs text-red-500 mt-1">Request date is required</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Scheduled Date</label>
+                <input {...register('scheduledDate')} type="date"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Start Date</label>
+                <input {...register('startDate')} type="date"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Completion Date</label>
+                <input {...register('completionDate')} type="date"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Running Hours</label>
+                <input {...register('runningHours')} type="number" min="0" placeholder="Current running hours"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Billing Status</label>
+                <select {...register('billingStatus')} className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
+                  <option>Pending</option><option>Quoted</option><option>Approved</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option>
+                </select>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Step: Notes */}
         {step === 'notes' && (
-          <div className="space-y-4 fade-in">
-            <FormSectionHeader title="Field Notes" description="Record technician findings, work performed, test results, and recommendations. These fields can also be updated by the assigned technician from the field." />
-
-            <FormField label="Findings" helper="What the technician observed on-site — root cause, condition of components.">
-              <textarea
-                {...register('findings')}
-                rows={3}
-                placeholder="e.g. Upper radiator hose cracked near clamp fitting. Coolant level critically low. Engine temperature fault code logged."
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
-
-            <FormField label="Work Performed" helper="Describe all maintenance or repair tasks completed.">
-              <textarea
-                {...register('workPerformed')}
-                rows={3}
-                placeholder="e.g. Replaced upper radiator hose. Flushed and refilled coolant system to full capacity. Cleared fault codes."
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
-
-            <FormField label="Testing / Results" helper="Results of post-service tests — load test, startup test, voltage/frequency readings.">
-              <textarea
-                {...register('testingResults')}
-                rows={2}
-                placeholder="e.g. Generator started and ran at 100% rated load for 30 minutes. Voltage: 461V, Frequency: 60.1Hz. All parameters normal."
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
-
-            <FormField label="Recommendations" helper="Follow-up actions, parts to order, or next scheduled visit notes.">
-              <textarea
-                {...register('recommendations')}
-                rows={2}
-                placeholder="e.g. Monitor turbocharger for oil seepage. Schedule turbocharger replacement at next PMS if condition worsens."
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
-
-            <FormField label="Parts / Materials Summary" helper="Brief text summary of all parts and materials used. For detailed tracking, use the Parts Used module.">
-              <textarea
-                {...register('partsMaterialsSummary')}
-                rows={2}
-                placeholder="e.g. 1x oil filter (CUM-OILF-6CTA), 1x fuel filter, 15L engine oil (SAE 15W-40), 10L coolant"
-                className={`${inputCls(false)} resize-none`}
-              />
-            </FormField>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              {[
+                { name: 'findings', label: 'Findings' },
+                { name: 'workPerformed', label: 'Work Performed' },
+                { name: 'testingResults', label: 'Testing Results' },
+                { name: 'recommendations', label: 'Recommendations' },
+                { name: 'partsMaterialsSummary', label: 'Parts / Materials Summary' },
+              ].map(field => (
+                <div key={field.name}>
+                  <label className="block text-xs font-500 text-foreground mb-1.5">{field.label}</label>
+                  <textarea {...register(field.name as keyof CreateJobFormData)} rows={2} placeholder={`Enter ${field.label.toLowerCase()}...`}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+                </div>
+              ))}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-500 text-foreground mb-1.5">Service Report No.</label>
+                  <input {...register('serviceReportNo')} placeholder="SR-YYYY-XXXX"
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+                <div>
+                  <label className="block text-xs font-500 text-foreground mb-1.5">Quotation No.</label>
+                  <input {...register('quotationNo')} placeholder="QT-YYYY-XXXX"
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Remarks</label>
+                <textarea {...register('remarks')} rows={2} placeholder="Additional remarks..."
+                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+              </div>
+            </div>
           </div>
         )}
       </form>
     </Modal>
   );
-}
-
-// ─── Form helper components ───────────────────────────────────────────────────
-
-function FormSectionHeader({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="pb-3 border-b border-border mb-4">
-      <h3 className="text-sm font-600 text-foreground">{title}</h3>
-      <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-    </div>
-  );
-}
-
-function FormField({
-  label,
-  required,
-  error,
-  helper,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  error?: string;
-  helper?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-500 text-foreground mb-1">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {helper && <p className="text-2xs text-muted-foreground mb-1.5 leading-relaxed">{helper}</p>}
-      {children}
-      {error && (
-        <p className="mt-1 text-2xs text-red-600 font-500 flex items-center gap-1">
-          <Icon name="ExclamationCircleIcon" size={12} />
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function inputCls(hasError: boolean) {
-  return `
-    w-full h-9 px-3 rounded-lg border text-sm text-foreground bg-card
-    focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
-    placeholder:text-muted-foreground transition-colors
-    disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted/50
-    ${hasError ? 'border-red-400 bg-red-50/20' : 'border-input hover:border-muted-foreground'}
-  `;
 }

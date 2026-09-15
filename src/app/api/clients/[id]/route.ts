@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const client = await prisma.client.findUnique({ where: { clientId: id } });
@@ -14,6 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -28,9 +33,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
-    // Check for child records that block deletion (preserve service history)
     const [siteCount, generatorCount, jobCount, pmsCount] = await Promise.all([
       prisma.site.count({ where: { clientId: id } }),
       prisma.generator.count({ where: { clientId: id } }),

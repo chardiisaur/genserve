@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe technician ID */
 function newTechnicianId(): string {
   return `tech-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const technicians = await prisma.technician.findMany({ orderBy: { technicianName: 'asc' } });
     return NextResponse.json(technicians);
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     if (!body.technicianName) {

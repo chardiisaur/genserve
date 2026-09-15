@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe PMS record ID */
 function newPmsRecordId(): string {
   return `pms-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const records = await prisma.pmsRecord.findMany({ orderBy: { pmsDate: 'desc' } });
     return NextResponse.json(records);
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     if (!body.generatorId || !body.clientId || !body.siteId || !body.pmsDate) {

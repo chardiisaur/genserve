@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe part ID */
 function newPartId(): string {
   return `pt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const parts = await prisma.partInventory.findMany({ orderBy: { partDescription: 'asc' } });
     return NextResponse.json(parts);
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     if (!body.partDescription || !body.partNo) {

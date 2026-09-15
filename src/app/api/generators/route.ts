@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe generator ID */
 function newGeneratorId(): string {
   return `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
-    const generators = await prisma.generator.findMany({ orderBy: { generatorId: 'asc' } });
+    const { searchParams } = new URL(req.url);
+    const clientId = searchParams.get('clientId');
+    const siteId = searchParams.get('siteId');
+    const where: Record<string, string> = {};
+    if (clientId) where.clientId = clientId;
+    if (siteId) where.siteId = siteId;
+    const generators = await prisma.generator.findMany({ where, orderBy: { generatorId: 'asc' } });
     return NextResponse.json(generators);
   } catch (err: unknown) {
     console.error('[GENERATOR GET ERROR]', err);
@@ -17,6 +26,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     if (!body.clientId || !body.siteId) {

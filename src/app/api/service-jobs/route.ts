@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 /**
  * Generates a collision-safe Job Order number in the format JO-YYYY-0001.
@@ -19,9 +20,14 @@ async function generateJobOrderNo(): Promise<string> {
   return `JO-${year}-${String(seq).padStart(4, '0')}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
-    const jobs = await prisma.serviceJob.findMany({ orderBy: { requestDate: 'desc' } });
+    const { searchParams } = new URL(req.url);
+    const clientId = searchParams.get('clientId');
+    const where = clientId ? { clientId } : {};
+    const jobs = await prisma.serviceJob.findMany({ where, orderBy: { requestDate: 'desc' } });
     return NextResponse.json(jobs);
   } catch (err: unknown) {
     console.error('[SERVICE JOB GET ERROR]', err);
@@ -30,6 +36,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
     const { requestDate, clientId, siteId, generatorId, serviceType } = body;

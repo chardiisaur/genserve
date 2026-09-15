@@ -52,13 +52,7 @@ const skillColors: Record<SkillLevel, string> = {
   Lead: 'bg-amber-100 text-amber-700',
 };
 
-// Fallback mock data when API is unavailable (local dev without db:setup)
-const mockTechnicians: Technician[] = [
-  { technicianId: 'tech-001', technicianName: 'Ricardo Dela Cruz', position: 'Lead Technician', contactNo: '09171234567', skillLevel: 'Lead', engineExpertise: 'Cummins, Perkins', controllerExpertise: 'ComAp, DSE', electricalExpertise: 'High', mechanicalExpertise: 'High', availability: 'Available', certifications: 'TESDA NC II', remarks: '' },
-  { technicianId: 'tech-002', technicianName: 'Mario Santos', position: 'Senior Technician', contactNo: '09189876543', skillLevel: 'Senior', engineExpertise: 'Volvo, Mitsubishi', controllerExpertise: 'Stamford', electricalExpertise: 'High', mechanicalExpertise: 'High', availability: 'Deployed', certifications: '', remarks: '' },
-  { technicianId: 'tech-003', technicianName: 'Jose Reyes', position: 'Technician', contactNo: '09201112222', skillLevel: 'Mid-Level', engineExpertise: 'Cummins', controllerExpertise: 'DSE', electricalExpertise: 'Medium', mechanicalExpertise: 'Medium', availability: 'Available', certifications: '', remarks: '' },
-  { technicianId: 'tech-004', technicianName: 'Pedro Garcia', position: 'Junior Technician', contactNo: '09333334444', skillLevel: 'Junior', engineExpertise: '', controllerExpertise: '', electricalExpertise: 'Low', mechanicalExpertise: 'Low', availability: 'Available', certifications: '', remarks: 'New hire' },
-];
+// Mock data removed — all data comes from the real database API
 
 export default function TechniciansScreen() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -72,19 +66,20 @@ export default function TechniciansScreen() {
   const [form, setForm] = useState(emptyTech);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Technician | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/technicians');
-      if (res.ok) {
-        const data = await res.json();
-        setTechnicians(data.length > 0 ? data : mockTechnicians);
-      } else {
-        setTechnicians(mockTechnicians);
+      let res = await fetch('/api/technicians');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
       }
-    } catch {
-      setTechnicians(mockTechnicians);
+      const data = await res.json();
+      setTechnicians(data);
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to load technicians');
     } finally {
       setLoading(false);
     }
@@ -144,58 +139,46 @@ export default function TechniciansScreen() {
     if (!form.technicianName.trim() || !form.position.trim()) return;
     setSaving(true);
     try {
+      let res: Response;
       if (editTech) {
-        const res = await fetch(`/api/technicians/${editTech.technicianId}`, {
+        res = await fetch(`/api/technicians/${editTech.technicianId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(form),
         });
-        if (res.ok) {
-          const updated = await res.json();
-          setTechnicians(prev => prev.map(t => t.technicianId === editTech.technicianId ? updated : t));
-        } else {
-          // Fallback: update locally
-          setTechnicians(prev => prev.map(t => t.technicianId === editTech.technicianId ? { ...t, ...form } : t));
-        }
       } else {
-        const res = await fetch('/api/technicians', {
+        res = await fetch('/api/technicians', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(form),
         });
-        if (res.ok) {
-          const created = await res.json();
-          setTechnicians(prev => [...prev, created]);
-        } else {
-          // Fallback: add locally
-          const newTech: Technician = {
-            ...form,
-            technicianId: `tech-${Date.now()}`,
-          };
-          setTechnicians(prev => [...prev, newTech]);
-        }
       }
-    } catch {
-      // Fallback: update/add locally
-      if (editTech) {
-        setTechnicians(prev => prev.map(t => t.technicianId === editTech.technicianId ? { ...t, ...form } : t));
-      } else {
-        const newTech: Technician = { ...form, technicianId: `tech-${Date.now()}` };
-        setTechnicians(prev => [...prev, newTech]);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
       }
+      await fetchAll();
+      setModalOpen(false);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to save technician');
     } finally {
       setSaving(false);
-      setModalOpen(false);
     }
   };
 
   const handleDelete = async (tech: Technician) => {
     try {
-      await fetch(`/api/technicians/${tech.technicianId}`, { method: 'DELETE' });
-    } catch { /* ignore */ }
-    setTechnicians(prev => prev.filter(t => t.technicianId !== tech.technicianId));
-    setDeleteConfirm(null);
-    if (detailTech?.technicianId === tech.technicianId) setDetailTech(null);
+      let res = await fetch(`/api/technicians/${tech.technicianId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchAll();
+      setDeleteConfirm(null);
+      if (detailTech?.technicianId === tech.technicianId) setDetailTech(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to delete technician');
+    }
   };
 
   const f = (key: keyof typeof emptyTech, val: string) =>
@@ -203,6 +186,19 @@ export default function TechniciansScreen() {
 
   return (
     <div className="space-y-5">
+      {/* Error state */}
+      {error && !loading && (
+        <div className="flex flex-col items-center justify-center h-64 gap-4">
+          <Icon name="ExclamationCircleIcon" size={40} className="text-red-500" />
+          <p className="text-base font-600 text-foreground">Failed to load technicians</p>
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <button onClick={() => { setError(null); fetchAll(); }} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
+            <Icon name="ArrowPathIcon" size={15} />Retry
+          </button>
+        </div>
+      )}
+      {!error && (
+      <>
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -609,6 +605,8 @@ export default function TechniciansScreen() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

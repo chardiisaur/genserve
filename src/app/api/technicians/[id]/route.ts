@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const tech = await prisma.technician.findUnique({ where: { technicianId: id } });
@@ -14,6 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -28,17 +33,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
-    // Check for active deployments — cannot delete a deployed technician
     const activeDeployments = await prisma.deployment.count({
       where: { technicianId: id, status: { in: ['Planned', 'Deployed'] } },
     });
     if (activeDeployments > 0) {
       return NextResponse.json({ error: `Cannot delete technician — ${activeDeployments} active deployment(s) exist. Complete or cancel them first.` }, { status: 409 });
     }
-    // Service history (ServiceJob, PmsRecord, PartUsed, Expense) will have their
-    // technicianId set to NULL via SetNull referential action — history is preserved.
     await prisma.technician.delete({ where: { technicianId: id } });
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

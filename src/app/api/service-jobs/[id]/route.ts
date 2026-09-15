@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isNextResponse } from '@/lib/rbac';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const job = await prisma.serviceJob.findUnique({ where: { jobOrderNo: id } });
@@ -14,10 +17,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const body = await req.json();
-    // Ensure optional technician fields are null (not empty string) to avoid FK errors
     const data = {
       ...body,
       leadTechnicianId: body.leadTechnicianId || null,
@@ -34,13 +38,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth();
+  if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
-    // Find the job first (id param is jobOrderNo)
     const job = await prisma.serviceJob.findUnique({ where: { jobOrderNo: id } });
     if (!job) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
 
-    // Check for child records that must be deleted first or block deletion
     const [deploymentCount, quotationCount] = await Promise.all([
       prisma.deployment.count({ where: { jobOrderNo: id } }),
       prisma.quotationBilling.count({ where: { jobOrderNo: id } }),
@@ -52,7 +56,6 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: `Cannot delete job — ${quotationCount} billing/quotation record(s) exist. Remove them first.` }, { status: 409 });
     }
 
-    // Delete child records in a transaction, then delete the job
     await prisma.$transaction(async (tx) => {
       await tx.fieldLog.deleteMany({ where: { jobOrderNo: id } });
       await tx.partUsed.deleteMany({ where: { jobOrderNo: id } });
