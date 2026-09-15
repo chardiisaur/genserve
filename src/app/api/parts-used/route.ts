@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, isNextResponse, ROLES } from '@/lib/rbac';
+import { computeReorderStatus } from '../parts/route';
 
 function newUsageId(): string {
   return `pu-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -84,7 +85,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.qty !== undefined && (isNaN(Number(body.qty)) || Number(body.qty) < 1)) {
+    const qty = Number(body.qty);
+    if (isNaN(qty) || qty < 1 || !Number.isInteger(qty)) {
       return NextResponse.json({ error: 'qty must be a positive integer' }, { status: 400 });
     }
 
@@ -99,16 +101,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validate generator belongs to the job's site
+    // Validate generator
     const generator = await prisma.generator.findUnique({ where: { generatorId } });
     if (!generator) return NextResponse.json({ error: 'Generator not found.' }, { status: 400 });
-    if (generator.siteId !== job.siteId) {
-      return NextResponse.json({ error: 'Generator does not belong to the job site.' }, { status: 400 });
-    }
-
-    // Validate part exists
-    const part = await prisma.partInventory.findUnique({ where: { partId } });
-    if (!part) return NextResponse.json({ error: 'Part not found.' }, { status: 400 });
 
     // Validate technician if provided
     if (body.technicianId) {
@@ -116,33 +111,65 @@ export async function POST(req: NextRequest) {
       if (!tech) return NextResponse.json({ error: 'Technician not found.' }, { status: 400 });
     }
 
-    const qty = Number(body.qty) || 1;
-    const unitCost = Number(body.unitCost) || part.unitCost;
-    const sellingPrice = Number(body.sellingPrice) || part.sellingPrice;
-    const totalCost = qty * unitCost;
-    const totalSelling = qty * sellingPrice;
+    // Perform transactional: validate stock, deduct, create PartUsed record
+    const result = await prisma.$transaction(async (tx) => {
+      // Lock and fetch part within transaction
+      const part = await tx.partInventory.findUnique({ where: { partId } });
+      if (!part) throw new Error('Part not found.');
+      if (part.status === 'Inactive') throw new Error('Part is inactive and cannot be used.');
 
-    const { id: _id, usageId: _uid, createdAt: _ca, serviceJob: _sj, generator: _g, part: _p, technician: _t, ...cleanBody } = body;
+      // Validate sufficient stock
+      if (part.stockQty < qty) {
+        throw new Error(`Insufficient stock. Available: ${part.stockQty} ${part.unit}, Requested: ${qty}`);
+      }
 
-    const partUsed = await prisma.partUsed.create({
-      data: {
-        usageId: newUsageId(),
-        ...cleanBody,
-        jobOrderNo,
-        generatorId,
-        partId,
-        partNo: part.partNo,
-        partDescription: part.partDescription,
-        qty,
-        unitCost,
-        sellingPrice,
-        totalCost,
-        totalSelling,
-      },
+      const unitCost = body.unitCost !== undefined ? Number(body.unitCost) : part.unitCost;
+      const sellingPrice = body.sellingPrice !== undefined ? Number(body.sellingPrice) : part.sellingPrice;
+      const totalCost = qty * unitCost;
+      const totalSelling = qty * sellingPrice;
+
+      // Deduct stock
+      const newStockQty = part.stockQty - qty;
+      const newReorderStatus = computeReorderStatus(newStockQty, part.minimumStock);
+
+      await tx.partInventory.update({
+        where: { partId },
+        data: {
+          stockQty: newStockQty,
+          reorderStatus: newReorderStatus,
+        },
+      });
+
+      // Create PartUsed record
+      const partUsed = await tx.partUsed.create({
+        data: {
+          usageId: newUsageId(),
+          jobOrderNo,
+          generatorId,
+          partId,
+          partNo: part.partNo,
+          partDescription: part.partDescription,
+          qty,
+          unitCost,
+          sellingPrice,
+          totalCost,
+          totalSelling,
+          dateUsed,
+          technicianId: body.technicianId ?? null,
+          remarks: body.remarks ?? '',
+        },
+      });
+
+      return { partUsed, updatedPart: { stockQty: newStockQty, reorderStatus: newReorderStatus } };
     });
-    return NextResponse.json(partUsed, { status: 201 });
+
+    return NextResponse.json(result.partUsed, { status: 201 });
   } catch (err: unknown) {
     console.error('[PARTS USED CREATE ERROR]', err);
+    const message = (err as Error).message || '';
+    if (message.includes('Insufficient stock') || message.includes('inactive') || message.includes('not found')) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     const code = (err as any)?.code;
     if (code === 'P2002') return NextResponse.json({ error: 'Duplicate record.' }, { status: 409 });
     if (code === 'P2003') return NextResponse.json({ error: 'Referenced record not found.' }, { status: 400 });

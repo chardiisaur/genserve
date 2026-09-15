@@ -228,6 +228,7 @@ model PartInventory {
   minimumStock    Int      @default(0)
   storageLocation String   @default("")
   reorderStatus   String   @default("OK")
+  status          String   @default("Active")
   remarks         String   @default("")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

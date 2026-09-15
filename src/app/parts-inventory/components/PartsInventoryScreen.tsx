@@ -5,7 +5,6 @@ import Icon from '@/components/ui/AppIcon';
 import EmptyState from '@/components/ui/EmptyState';
 import Modal from '@/components/ui/Modal';
 
-
 export type ReorderStatus = 'OK' | 'Low Stock' | 'Critical' | 'Out of Stock';
 
 export interface SparePart {
@@ -23,21 +22,35 @@ export interface SparePart {
   minimumStock: number;
   storageLocation: string;
   reorderStatus: ReorderStatus;
+  status: string;
   remarks: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-const emptyPart: Omit<SparePart, 'id' | 'partId'> = {
+const emptyForm = {
   partNo: '', partDescription: '', brand: '', applicableEngine: '', supplier: '',
   unit: 'pc', unitCost: 0, sellingPrice: 0, stockQty: 0, minimumStock: 0,
-  storageLocation: '', reorderStatus: 'OK', remarks: '',
+  storageLocation: '', remarks: '',
 };
 
-function computeReorderStatus(qty: number, min: number): ReorderStatus {
-  if (qty === 0) return 'Out of Stock';
-  if (qty < min * 0.5) return 'Critical';
-  if (qty < min) return 'Low Stock';
-  return 'OK';
-}
+type FormState = typeof emptyForm;
+
+const UNITS = ['pc', 'set', 'pail', 'drum', 'gal', 'liter', 'kg', 'box', 'roll', 'pair', 'length'];
+
+const statusColor: Record<ReorderStatus, string> = {
+  'OK': 'text-emerald-600 bg-emerald-50 border-emerald-200',
+  'Low Stock': 'text-amber-600 bg-amber-50 border-amber-200',
+  'Critical': 'text-orange-600 bg-orange-50 border-orange-200',
+  'Out of Stock': 'text-red-600 bg-red-50 border-red-200',
+};
+
+const rowBg: Record<ReorderStatus, string> = {
+  'OK': '',
+  'Low Stock': 'bg-amber-50/30',
+  'Critical': 'bg-orange-50/40',
+  'Out of Stock': 'bg-red-50/40',
+};
 
 export default function PartsInventoryScreen() {
   const [parts, setParts] = useState<SparePart[]>([]);
@@ -46,22 +59,25 @@ export default function PartsInventoryScreen() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
+  const [filterActive, setFilterActive] = useState<'Active' | 'Inactive' | ''>('Active');
   const [modalOpen, setModalOpen] = useState(false);
   const [editPart, setEditPart] = useState<SparePart | null>(null);
   const [detailPart, setDetailPart] = useState<SparePart | null>(null);
-  const [form, setForm] = useState<Omit<SparePart, 'id' | 'partId'>>(emptyPart);
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [sortCol, setSortCol] = useState<keyof SparePart>('partNo');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<SparePart | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deactivateConfirm, setDeactivateConfirm] = useState<SparePart | null>(null);
+  const [deactivating, setDeactivating] = useState(false);
 
   const fetchParts = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      let res = await fetch('/api/parts');
+      let res = await fetch('/api/parts?includeInactive=true');
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Server error ${res.status}`);
@@ -77,19 +93,27 @@ export default function PartsInventoryScreen() {
 
   useEffect(() => { fetchParts(); }, [fetchParts]);
 
-  const brands = useMemo(() => [...new Set(parts.map(p => p.brand))].sort(), [parts]);
+  const brands = useMemo(() => [...new Set(parts.map(p => p.brand).filter(Boolean))].sort(), [parts]);
 
   const filtered = useMemo(() => {
     return parts.filter(p => {
+      if (filterActive && p.status !== filterActive) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!p.partNo.toLowerCase().includes(q) && !p.partDescription.toLowerCase().includes(q) && !p.brand.toLowerCase().includes(q) && !p.applicableEngine.toLowerCase().includes(q) && !p.supplier.toLowerCase().includes(q)) return false;
+        if (
+          !p.partNo.toLowerCase().includes(q) &&
+          !p.partDescription.toLowerCase().includes(q) &&
+          !p.brand.toLowerCase().includes(q) &&
+          !p.applicableEngine.toLowerCase().includes(q) &&
+          !p.supplier.toLowerCase().includes(q) &&
+          !p.storageLocation.toLowerCase().includes(q)
+        ) return false;
       }
       if (filterStatus && p.reorderStatus !== filterStatus) return false;
       if (filterBrand && p.brand !== filterBrand) return false;
       return true;
     });
-  }, [parts, search, filterStatus, filterBrand]);
+  }, [parts, search, filterStatus, filterBrand, filterActive]);
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
@@ -108,7 +132,7 @@ export default function PartsInventoryScreen() {
 
   const openCreate = () => {
     setEditPart(null);
-    setForm(emptyPart);
+    setForm(emptyForm);
     setSaveError(null);
     setModalOpen(true);
   };
@@ -120,7 +144,7 @@ export default function PartsInventoryScreen() {
       applicableEngine: p.applicableEngine, supplier: p.supplier, unit: p.unit,
       unitCost: p.unitCost, sellingPrice: p.sellingPrice, stockQty: p.stockQty,
       minimumStock: p.minimumStock, storageLocation: p.storageLocation,
-      reorderStatus: p.reorderStatus, remarks: p.remarks,
+      remarks: p.remarks,
     });
     setSaveError(null);
     setModalOpen(true);
@@ -132,10 +156,32 @@ export default function PartsInventoryScreen() {
       setSaveError('Part No. and Description are required.');
       return;
     }
+    if (form.stockQty < 0) {
+      setSaveError('Stock quantity cannot be negative.');
+      return;
+    }
+    if (form.minimumStock < 0) {
+      setSaveError('Minimum stock cannot be negative.');
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
-      const payload = { ...form, reorderStatus: computeReorderStatus(form.stockQty, form.minimumStock) };
+      // Do NOT send reorderStatus — server computes it
+      const payload = {
+        partNo: form.partNo.trim(),
+        partDescription: form.partDescription.trim(),
+        brand: form.brand.trim(),
+        applicableEngine: form.applicableEngine.trim(),
+        supplier: form.supplier.trim(),
+        unit: form.unit,
+        unitCost: Number(form.unitCost),
+        sellingPrice: Number(form.sellingPrice),
+        stockQty: Number(form.stockQty),
+        minimumStock: Number(form.minimumStock),
+        storageLocation: form.storageLocation.trim(),
+        remarks: form.remarks.trim(),
+      };
       let res: Response;
       if (editPart) {
         res = await fetch(`/api/parts/${editPart.partId}`, {
@@ -163,6 +209,29 @@ export default function PartsInventoryScreen() {
     }
   };
 
+  const handleDeactivate = async (part: SparePart) => {
+    setDeactivating(true);
+    try {
+      const newStatus = part.status === 'Active' ? 'Inactive' : 'Active';
+      let res = await fetch(`/api/parts/${part.partId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+      await fetchParts();
+      setDeactivateConfirm(null);
+      if (detailPart?.partId === part.partId) setDetailPart(null);
+    } catch (err: unknown) {
+      alert((err as Error).message || 'Failed to update part status');
+    } finally {
+      setDeactivating(false);
+    }
+  };
+
   const handleDelete = async (part: SparePart) => {
     setDeleting(true);
     try {
@@ -181,30 +250,24 @@ export default function PartsInventoryScreen() {
     }
   };
 
-  const kpiOk = parts.filter(p => p.reorderStatus === 'OK').length;
-  const kpiLow = parts.filter(p => p.reorderStatus === 'Low Stock').length;
-  const kpiCritical = parts.filter(p => p.reorderStatus === 'Critical').length;
-  const kpiOut = parts.filter(p => p.reorderStatus === 'Out of Stock').length;
-
-  const statusColor: Record<ReorderStatus, string> = {
-    'OK': 'text-emerald-600 bg-emerald-50 border-emerald-200',
-    'Low Stock': 'text-amber-600 bg-amber-50 border-amber-200',
-    'Critical': 'text-orange-600 bg-orange-50 border-orange-200',
-    'Out of Stock': 'text-red-600 bg-red-50 border-red-200',
-  };
-
-  const rowBg: Record<ReorderStatus, string> = {
-    'OK': '',
-    'Low Stock': 'bg-amber-50/30',
-    'Critical': 'bg-orange-50/40',
-    'Out of Stock': 'bg-red-50/40',
-  };
+  // KPI counts (all parts, not just filtered)
+  const activeParts = parts.filter(p => p.status === 'Active');
+  const kpiOk = activeParts.filter(p => p.reorderStatus === 'OK').length;
+  const kpiLow = activeParts.filter(p => p.reorderStatus === 'Low Stock').length;
+  const kpiCritical = activeParts.filter(p => p.reorderStatus === 'Critical').length;
+  const kpiOut = activeParts.filter(p => p.reorderStatus === 'Out of Stock').length;
 
   const modalFooter = (
     <div className="flex items-center justify-end gap-3 w-full">
-      <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors">Cancel</button>
-      <button type="button" onClick={handleSave} disabled={saving} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed">
-        {saving ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" />Saving...</> : <><Icon name="CheckIcon" size={15} />{editPart ? 'Update Part' : 'Add Part'}</>}
+      <button type="button" onClick={() => setModalOpen(false)}
+        className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors">
+        Cancel
+      </button>
+      <button type="button" onClick={handleSave} disabled={saving}
+        className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-5 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed">
+        {saving
+          ? <><Icon name="ArrowPathIcon" size={15} className="animate-spin" />Saving...</>
+          : <><Icon name="CheckIcon" size={15} />{editPart ? 'Update Part' : 'Add Part'}</>}
       </button>
     </div>
   );
@@ -224,7 +287,8 @@ export default function PartsInventoryScreen() {
         <Icon name="ExclamationCircleIcon" size={40} className="text-red-500" />
         <p className="text-base font-600 text-foreground">Failed to load parts inventory</p>
         <p className="text-sm text-muted-foreground">{error}</p>
-        <button onClick={fetchParts} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
+        <button onClick={fetchParts}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
           <Icon name="ArrowPathIcon" size={15} />Retry
         </button>
       </div>
@@ -237,9 +301,10 @@ export default function PartsInventoryScreen() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-600 text-foreground">Parts Inventory</h1>
-          <p className="text-xs text-muted-foreground mt-1">{parts.length} parts registered</p>
+          <p className="text-xs text-muted-foreground mt-1">{activeParts.length} active parts · {parts.length} total</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-4 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 flex-shrink-0">
+        <button onClick={openCreate}
+          className="flex items-center gap-2 bg-primary text-primary-foreground text-sm font-500 px-4 py-2 rounded-lg hover:bg-primary/90 active:scale-95 transition-all duration-150 flex-shrink-0">
           <Icon name="PlusIcon" size={16} />Add Part
         </button>
       </div>
@@ -268,31 +333,42 @@ export default function PartsInventoryScreen() {
       <div className="bg-card border border-border rounded-xl px-4 py-3 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Icon name="MagnifyingGlassIcon" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input type="text" placeholder="Search part no., description, brand, engine..." value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" placeholder="Search part no., description, brand, engine, location..."
+            value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50" />
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
-          <option value="">All Statuses</option>
+        <select value={filterActive} onChange={e => setFilterActive(e.target.value as 'Active' | 'Inactive' | '')}
+          className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+          <option value="">All</option>
+        </select>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
+          <option value="">All Stock Status</option>
           <option>OK</option>
           <option>Low Stock</option>
           <option>Critical</option>
           <option>Out of Stock</option>
         </select>
-        <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)} className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
+        <select value={filterBrand} onChange={e => setFilterBrand(e.target.value)}
+          className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
           <option value="">All Brands</option>
           {brands.map(b => <option key={b}>{b}</option>)}
         </select>
-        {(search || filterStatus || filterBrand) && (
-          <button onClick={() => { setSearch(''); setFilterStatus(''); setFilterBrand(''); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors">
+        {(search || filterStatus || filterBrand || filterActive !== 'Active') && (
+          <button onClick={() => { setSearch(''); setFilterStatus(''); setFilterBrand(''); setFilterActive('Active'); }}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors">
             <Icon name="XMarkIcon" size={13} /> Clear
           </button>
         )}
+        <span className="text-xs text-muted-foreground ml-auto">{sorted.length} result{sorted.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* Table */}
       <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin">
-          <table className="w-full min-w-[1100px]">
+          <table className="w-full min-w-[1200px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 {([
@@ -300,15 +376,17 @@ export default function PartsInventoryScreen() {
                   { key: 'partDescription', label: 'Description' },
                   { key: 'brand', label: 'Brand' },
                   { key: 'applicableEngine', label: 'Applicable Engine' },
+                  { key: 'supplier', label: 'Supplier' },
                   { key: 'unit', label: 'Unit' },
                   { key: 'unitCost', label: 'Unit Cost' },
                   { key: 'sellingPrice', label: 'Selling Price' },
                   { key: 'stockQty', label: 'Stock Qty' },
                   { key: 'minimumStock', label: 'Min. Stock' },
                   { key: 'storageLocation', label: 'Location' },
-                  { key: 'reorderStatus', label: 'Status' },
+                  { key: 'reorderStatus', label: 'Stock Status' },
                 ] as { key: keyof SparePart; label: string }[]).map(col => (
-                  <th key={col.key} onClick={() => handleSort(col.key)} className="text-left px-3 py-3 text-2xs font-600 uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground select-none whitespace-nowrap">
+                  <th key={col.key} onClick={() => handleSort(col.key)}
+                    className="text-left px-3 py-3 text-2xs font-600 uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground select-none whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       {col.label}
                       {sortCol === col.key
@@ -317,36 +395,52 @@ export default function PartsInventoryScreen() {
                     </div>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-right text-2xs font-600 uppercase tracking-wider text-muted-foreground w-20">Actions</th>
+                <th className="px-3 py-3 text-right text-2xs font-600 uppercase tracking-wider text-muted-foreground w-24">Actions</th>
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 ? (
-                <tr><td colSpan={12}>
-                  <EmptyState icon="ArchiveBoxIcon" title="No parts found" description="No parts match your filters, or no parts have been added yet."
+                <tr><td colSpan={13}>
+                  <EmptyState icon="ArchiveBoxIcon" title="No parts found"
+                    description="No parts match your filters, or no parts have been added yet."
                     action={{ label: 'Add Part', onClick: openCreate }} />
                 </td></tr>
-              ) : sorted.map((p, idx) => (
-                <tr key={p.partId} className={`border-b border-border last:border-0 hover:bg-muted/40 transition-colors group ${rowBg[p.reorderStatus]} ${idx % 2 === 0 ? '' : ''}`}>
+              ) : sorted.map(p => (
+                <tr key={p.partId}
+                  className={`border-b border-border last:border-0 hover:bg-muted/40 transition-colors group ${rowBg[p.reorderStatus]} ${p.status === 'Inactive' ? 'opacity-60' : ''}`}>
                   <td className="px-3 py-2.5">
                     <button onClick={() => setDetailPart(p)} className="text-xs font-600 text-primary hover:underline">{p.partNo}</button>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-foreground max-w-[200px] truncate">{p.partDescription}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground">{p.brand}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground max-w-[160px] truncate">{p.applicableEngine}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{p.brand || '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground max-w-[160px] truncate">{p.applicableEngine || '—'}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground max-w-[120px] truncate">{p.supplier || '—'}</td>
                   <td className="px-3 py-2.5 text-xs text-foreground">{p.unit}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{p.unitCost.toLocaleString()}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{p.sellingPrice.toLocaleString()}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{Number(p.unitCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground tabular-nums">₱{Number(p.sellingPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-3 py-2.5 text-xs font-600 text-foreground tabular-nums">{p.stockQty}</td>
                   <td className="px-3 py-2.5 text-xs text-muted-foreground tabular-nums">{p.minimumStock}</td>
-                  <td className="px-3 py-2.5 text-xs text-foreground">{p.storageLocation}</td>
+                  <td className="px-3 py-2.5 text-xs text-foreground">{p.storageLocation || '—'}</td>
                   <td className="px-3 py-2.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-500 border ${statusColor[p.reorderStatus]}`}>{p.reorderStatus}</span>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-500 border ${statusColor[p.reorderStatus]}`}>
+                      {p.reorderStatus}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openEdit(p)} title="Edit" className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"><Icon name="PencilSquareIcon" size={14} /></button>
-                      <button onClick={() => setDeleteConfirm(p)} title="Delete" className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"><Icon name="TrashIcon" size={14} /></button>
+                      <button onClick={() => openEdit(p)} title="Edit"
+                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
+                        <Icon name="PencilSquareIcon" size={14} />
+                      </button>
+                      <button onClick={() => setDeactivateConfirm(p)}
+                        title={p.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-amber-600 transition-colors">
+                        <Icon name={p.status === 'Active' ? 'ArchiveBoxXMarkIcon' : 'ArchiveBoxIcon'} size={14} />
+                      </button>
+                      <button onClick={() => setDeleteConfirm(p)} title="Delete"
+                        className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors">
+                        <Icon name="TrashIcon" size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -360,22 +454,33 @@ export default function PartsInventoryScreen() {
       {detailPart && (
         <div className="fixed inset-y-0 right-0 w-96 bg-card border-l border-border shadow-xl z-40 flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h2 className="font-600 text-sm text-foreground">{detailPart.partNo}</h2>
-            <button onClick={() => setDetailPart(null)} className="p-1 rounded hover:bg-muted text-muted-foreground"><Icon name="XMarkIcon" size={16} /></button>
+            <div>
+              <h2 className="font-600 text-sm text-foreground">{detailPart.partNo}</h2>
+              {detailPart.status === 'Inactive' && (
+                <span className="text-2xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Inactive</span>
+              )}
+            </div>
+            <button onClick={() => setDetailPart(null)} className="p-1 rounded hover:bg-muted text-muted-foreground">
+              <Icon name="XMarkIcon" size={16} />
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             <p className="text-sm font-500 text-foreground">{detailPart.partDescription}</p>
-            <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-500 border ${statusColor[detailPart.reorderStatus]}`}>{detailPart.reorderStatus}</div>
+            <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-500 border ${statusColor[detailPart.reorderStatus]}`}>
+              {detailPart.reorderStatus}
+            </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
               {[
+                { label: 'Part ID', value: detailPart.partId },
                 { label: 'Brand', value: detailPart.brand },
                 { label: 'Unit', value: detailPart.unit },
-                { label: 'Unit Cost', value: `₱${detailPart.unitCost.toLocaleString()}` },
-                { label: 'Selling Price', value: `₱${detailPart.sellingPrice.toLocaleString()}` },
+                { label: 'Supplier', value: detailPart.supplier },
+                { label: 'Unit Cost', value: `₱${Number(detailPart.unitCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}` },
+                { label: 'Selling Price', value: `₱${Number(detailPart.sellingPrice).toLocaleString(undefined, { minimumFractionDigits: 2 })}` },
                 { label: 'Stock Qty', value: String(detailPart.stockQty) },
                 { label: 'Min. Stock', value: String(detailPart.minimumStock) },
                 { label: 'Location', value: detailPart.storageLocation },
-                { label: 'Supplier', value: detailPart.supplier },
+                { label: 'Status', value: detailPart.status },
               ].map(row => (
                 <div key={row.label}>
                   <p className="text-2xs font-600 uppercase tracking-wider text-muted-foreground">{row.label}</p>
@@ -397,10 +502,17 @@ export default function PartsInventoryScreen() {
             )}
           </div>
           <div className="border-t border-border p-3 flex gap-2">
-            <button onClick={() => openEdit(detailPart)} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-500 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+            <button onClick={() => openEdit(detailPart)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-500 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
               <Icon name="PencilSquareIcon" size={13} />Edit
             </button>
-            <button onClick={() => setDeleteConfirm(detailPart)} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-500 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+            <button onClick={() => setDeactivateConfirm(detailPart)}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-500 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors">
+              <Icon name={detailPart.status === 'Active' ? 'ArchiveBoxXMarkIcon' : 'ArchiveBoxIcon'} size={13} />
+              {detailPart.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+            </button>
+            <button onClick={() => setDeleteConfirm(detailPart)}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-500 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
               <Icon name="TrashIcon" size={13} />Delete
             </button>
           </div>
@@ -410,7 +522,7 @@ export default function PartsInventoryScreen() {
       {/* Create/Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
         title={editPart ? `Edit Part — ${editPart.partNo}` : 'Add New Part'}
-        subtitle={editPart ? 'Update part details and inventory quantities' : 'Enter part details to add to inventory'}
+        subtitle={editPart ? 'Update part details. Stock changes via parts-used transactions.' : 'Enter part details to add to inventory'}
         size="lg" footer={modalFooter}>
         <div className="space-y-4">
           {saveError && (
@@ -421,72 +533,122 @@ export default function PartsInventoryScreen() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Part No. <span className="text-red-500">*</span></label>
-              <input value={form.partNo} onChange={e => setForm(p => ({ ...p, partNo: e.target.value }))} placeholder="e.g. CUM-3401544"
+              <input value={form.partNo} onChange={e => setForm(p => ({ ...p, partNo: e.target.value }))}
+                placeholder="e.g. CUM-3401544"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Brand</label>
-              <input value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))} placeholder="e.g. Cummins"
+              <input value={form.brand} onChange={e => setForm(p => ({ ...p, brand: e.target.value }))}
+                placeholder="e.g. Cummins"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-500 text-foreground mb-1.5">Description <span className="text-red-500">*</span></label>
-              <input value={form.partDescription} onChange={e => setForm(p => ({ ...p, partDescription: e.target.value }))} placeholder="e.g. Engine Oil Filter"
+              <input value={form.partDescription} onChange={e => setForm(p => ({ ...p, partDescription: e.target.value }))}
+                placeholder="e.g. Engine Oil Filter"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-500 text-foreground mb-1.5">Applicable Engine</label>
-              <input value={form.applicableEngine} onChange={e => setForm(p => ({ ...p, applicableEngine: e.target.value }))} placeholder="e.g. Cummins 6BT / 6CT"
+              <input value={form.applicableEngine} onChange={e => setForm(p => ({ ...p, applicableEngine: e.target.value }))}
+                placeholder="e.g. Cummins 6BT / 6CT"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Supplier</label>
-              <input value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name"
+              <input value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))}
+                placeholder="Supplier name"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Unit</label>
               <select value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                {['pc', 'set', 'pail', 'drum', 'gal', 'liter', 'kg', 'box', 'roll'].map(u => <option key={u}>{u}</option>)}
+                {UNITS.map(u => <option key={u}>{u}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Unit Cost (₱)</label>
-              <input type="number" min="0" value={form.unitCost} onChange={e => setForm(p => ({ ...p, unitCost: Number(e.target.value) }))}
+              <input type="number" min="0" step="0.01" value={form.unitCost}
+                onChange={e => setForm(p => ({ ...p, unitCost: Number(e.target.value) }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Selling Price (₱)</label>
-              <input type="number" min="0" value={form.sellingPrice} onChange={e => setForm(p => ({ ...p, sellingPrice: Number(e.target.value) }))}
+              <input type="number" min="0" step="0.01" value={form.sellingPrice}
+                onChange={e => setForm(p => ({ ...p, sellingPrice: Number(e.target.value) }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
-              <label className="block text-xs font-500 text-foreground mb-1.5">Stock Qty</label>
-              <input type="number" min="0" value={form.stockQty} onChange={e => setForm(p => ({ ...p, stockQty: Number(e.target.value) }))}
+              <label className="block text-xs font-500 text-foreground mb-1.5">
+                Stock Qty
+                {editPart && <span className="text-2xs text-muted-foreground ml-1">(current: {editPart.stockQty})</span>}
+              </label>
+              <input type="number" min="0" value={form.stockQty}
+                onChange={e => setForm(p => ({ ...p, stockQty: Number(e.target.value) }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Minimum Stock</label>
-              <input type="number" min="0" value={form.minimumStock} onChange={e => setForm(p => ({ ...p, minimumStock: Number(e.target.value) }))}
+              <input type="number" min="0" value={form.minimumStock}
+                onChange={e => setForm(p => ({ ...p, minimumStock: Number(e.target.value) }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div>
               <label className="block text-xs font-500 text-foreground mb-1.5">Storage Location</label>
-              <input value={form.storageLocation} onChange={e => setForm(p => ({ ...p, storageLocation: e.target.value }))} placeholder="e.g. Shelf A-1"
+              <input value={form.storageLocation} onChange={e => setForm(p => ({ ...p, storageLocation: e.target.value }))}
+                placeholder="e.g. Shelf A-1"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-500 text-foreground mb-1.5">Remarks</label>
-              <input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Optional notes"
+              <input value={form.remarks} onChange={e => setForm(p => ({ ...p, remarks: e.target.value }))}
+                placeholder="Optional notes"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
           </div>
           <div className="bg-muted/30 rounded-lg px-3 py-2 text-xs text-muted-foreground">
-            Reorder status will be automatically calculated based on stock qty vs minimum stock.
+            <strong>Reorder status</strong> is calculated server-side: stockQty ≤ 0 → Out of Stock · below 50% of min → Critical · below min → Low Stock · otherwise → OK
           </div>
         </div>
       </Modal>
+
+      {/* Deactivate Confirm */}
+      {deactivateConfirm && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center">
+          <div className="absolute inset-0 bg-foreground/40" onClick={!deactivating ? () => setDeactivateConfirm(null) : undefined} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-modal w-full max-w-md mx-4 p-6">
+            <div className="flex items-start gap-4 mb-5">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Icon name="ArchiveBoxXMarkIcon" size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-700 text-foreground mb-1">
+                  {deactivateConfirm.status === 'Active' ? 'Deactivate Part' : 'Reactivate Part'}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {deactivateConfirm.status === 'Active'
+                    ? <>Deactivate <span className="font-600 text-foreground">{deactivateConfirm.partNo} — {deactivateConfirm.partDescription}</span>? It will no longer appear in active inventory or be available for new service jobs.</>
+                    : <>Reactivate <span className="font-600 text-foreground">{deactivateConfirm.partNo} — {deactivateConfirm.partDescription}</span>? It will be available for service jobs again.</>}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setDeactivateConfirm(null)} disabled={deactivating}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={() => handleDeactivate(deactivateConfirm)} disabled={deactivating}
+                className="flex items-center gap-2 bg-amber-600 text-white text-sm font-500 px-5 py-2 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-60">
+                {deactivating
+                  ? <><Icon name="ArrowPathIcon" size={14} className="animate-spin" />Processing...</>
+                  : deactivateConfirm.status === 'Active' ? 'Deactivate' : 'Reactivate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirm */}
       {deleteConfirm && (
@@ -499,11 +661,17 @@ export default function PartsInventoryScreen() {
               </div>
               <div>
                 <h3 className="text-base font-700 text-foreground mb-1">Delete Part</h3>
-                <p className="text-sm text-muted-foreground">Delete <span className="font-600 text-foreground">{deleteConfirm.partNo} — {deleteConfirm.partDescription}</span>? This cannot be undone.</p>
+                <p className="text-sm text-muted-foreground">
+                  Delete <span className="font-600 text-foreground">{deleteConfirm.partNo} — {deleteConfirm.partDescription}</span>?
+                  This cannot be undone. Parts with usage history cannot be deleted — deactivate instead.
+                </p>
               </div>
             </div>
             <div className="flex items-center justify-end gap-3">
-              <button onClick={() => setDeleteConfirm(null)} disabled={deleting} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={() => setDeleteConfirm(null)} disabled={deleting}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50">
+                Cancel
+              </button>
               <button onClick={() => handleDelete(deleteConfirm)} disabled={deleting}
                 className="flex items-center gap-2 bg-red-600 text-white text-sm font-500 px-5 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
                 {deleting ? <><Icon name="ArrowPathIcon" size={14} className="animate-spin" />Deleting...</> : 'Delete Part'}
