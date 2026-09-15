@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
 import Icon from '@/components/ui/AppIcon';
 
@@ -325,10 +326,19 @@ export default function UserManagementScreen() {
   };
 
   return (
-    <AppLayout>
+    <AppLayout currentPath="/user-management">
       <div className="p-6 max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Icon name="ArrowLeftIcon" size={13} />
+              Back to Dashboard
+            </Link>
+          </div>
           <h1 className="text-xl font-600 text-foreground">User Management</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Manage system accounts — create, edit, or remove users and assign roles.

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import EmptyState from '@/components/ui/EmptyState';
 import Modal from '@/components/ui/Modal';
+import Link from 'next/link';
 
 export type DeploymentStatus = 'Planned' | 'Deployed' | 'Returned' | 'Cancelled';
 
@@ -156,6 +157,15 @@ export default function DeploymentsScreen() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Icon name="ArrowLeftIcon" size={13} />
+                Back to Dashboard
+              </Link>
+            </div>
             <h1 className="text-lg font-600 text-foreground">Technician Deployments</h1>
             <p className="text-xs text-muted-foreground mt-0.5">{deployments.length} deployment{deployments.length !== 1 ? 's' : ''}</p>
           </div>

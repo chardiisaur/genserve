@@ -11,7 +11,7 @@ interface NavItem {
   label: string;
   icon: string;
   href?: string;
-  badge?: number;
+  badgeKey?: 'openJobs' | 'pmsDue' | 'lowStockParts';
   children?: NavItem[];
 }
 
@@ -33,7 +33,6 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
     group: 'Assets',
     items: [
       { id: 'nav-generators', label: 'Generators', icon: 'BoltIcon', href: '/generators' },
-      { id: 'nav-engine-models', label: 'Engine Models', icon: 'CogIcon', href: '/engine-models' },
     ],
   },
   {
@@ -46,21 +45,20 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
   {
     group: 'Service',
     items: [
-      { id: 'nav-service-jobs', label: 'Service Jobs', icon: 'WrenchScrewdriverIcon', href: '/service-job-management', badge: 7 },
-      { id: 'nav-pms', label: 'PMS Schedule', icon: 'CalendarDaysIcon', href: '/pms', badge: 4 },
+      { id: 'nav-service-jobs', label: 'Service Jobs', icon: 'WrenchScrewdriverIcon', href: '/service-job-management', badgeKey: 'openJobs' },
+      { id: 'nav-pms', label: 'PMS Schedule', icon: 'CalendarDaysIcon', href: '/pms', badgeKey: 'pmsDue' },
     ],
   },
   {
     group: 'Inventory',
     items: [
-      { id: 'nav-parts-inventory', label: 'Parts Inventory', icon: 'ArchiveBoxIcon', href: '/parts-inventory', badge: 3 },
+      { id: 'nav-parts-inventory', label: 'Parts Inventory', icon: 'ArchiveBoxIcon', href: '/parts-inventory', badgeKey: 'lowStockParts' },
       { id: 'nav-parts-used', label: 'Parts Used', icon: 'WrenchIcon', href: '/parts-used' },
     ],
   },
   {
     group: 'Finance',
     items: [
-      { id: 'nav-expenses', label: 'Expenses', icon: 'BanknotesIcon', href: '/expenses' },
       { id: 'nav-billing', label: 'Billing & Invoicing', icon: 'DocumentCurrencyDollarIcon', href: '/billing' },
     ],
   },
@@ -68,11 +66,15 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
     group: 'Configuration',
     items: [
       { id: 'nav-user-management', label: 'User Management', icon: 'UserGroupIcon', href: '/user-management' },
-      { id: 'nav-service-types', label: 'Service Types', icon: 'TagIcon', href: '/service-types' },
-      { id: 'nav-settings', label: 'Settings', icon: 'Cog8ToothIcon', href: '/settings' },
     ],
   },
 ];
+
+interface BadgeCounts {
+  openJobs: number;
+  pmsDue: number;
+  lowStockParts: number;
+}
 
 interface SidebarProps {
   collapsed: boolean;
@@ -84,10 +86,29 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentPath }: SidebarProps) {
   const [expandedGroups, setExpandedGroups] = useState<string[]>(['', 'Service', 'Inventory', 'Finance']);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [badges, setBadges] = useState<BadgeCounts>({ openJobs: 0, pmsDue: 0, lowStockParts: 0 });
 
   useEffect(() => {
     const user = getAuthUser();
     setAuthUser(user);
+  }, []);
+
+  useEffect(() => {
+    // Fetch real badge counts from the dashboard API
+    fetch('/api/dashboard')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.kpis) return;
+        const { openJobs, inProgressJobs, pmsDue, pmsOverdue, lowStockParts } = data.kpis;
+        setBadges({
+          openJobs: (openJobs ?? 0) + (inProgressJobs ?? 0),
+          pmsDue: (pmsDue ?? 0) + (pmsOverdue ?? 0),
+          lowStockParts: lowStockParts ?? 0,
+        });
+      })
+      .catch(() => {
+        // Silently fail — badges just won't show
+      });
   }, []);
 
   const toggleGroup = (group: string) => {
@@ -118,6 +139,7 @@ export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentP
           isActive={isActive}
           navGroups={adminNavGroups}
           authUser={authUser}
+          badges={badges}
         />
       </aside>
 
@@ -149,6 +171,7 @@ export default function Sidebar({ collapsed, mobileOpen, onMobileClose, currentP
           isActive={isActive}
           navGroups={adminNavGroups}
           authUser={authUser}
+          badges={badges}
         />
       </aside>
     </>
@@ -162,6 +185,7 @@ function SidebarContent({
   isActive,
   navGroups,
   authUser,
+  badges,
 }: {
   collapsed: boolean;
   expandedGroups: string[];
@@ -169,6 +193,7 @@ function SidebarContent({
   isActive: (href?: string) => boolean;
   navGroups: { group: string; items: NavItem[] }[];
   authUser: AuthUser | null;
+  badges: BadgeCounts;
 }) {
   const displayName = authUser?.name ?? 'Guest';
   const displayRole = authUser?.role ?? '';
@@ -222,6 +247,7 @@ function SidebarContent({
                 item={item}
                 collapsed={collapsed}
                 active={isActive(item.href)}
+                badge={item.badgeKey ? badges[item.badgeKey] : undefined}
               />
             ))}
           </div>
@@ -254,7 +280,7 @@ function SidebarContent({
   );
 }
 
-function NavItemRow({ item, collapsed, active }: { item: NavItem; collapsed: boolean; active: boolean }) {
+function NavItemRow({ item, collapsed, active, badge }: { item: NavItem; collapsed: boolean; active: boolean; badge?: number }) {
   return (
     <Link
       href={item.href || '#'}
@@ -275,16 +301,16 @@ function NavItemRow({ item, collapsed, active }: { item: NavItem; collapsed: boo
       {!collapsed && (
         <>
           <span className="text-xs font-500 flex-1 truncate">{item.label}</span>
-          {item.badge && item.badge > 0 && (
+          {badge !== undefined && badge > 0 && (
             <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-foreground text-2xs font-600 flex items-center justify-center tabular-nums">
-              {item.badge}
+              {badge > 99 ? '99+' : badge}
             </span>
           )}
         </>
       )}
-      {collapsed && item.badge && item.badge > 0 && (
+      {collapsed && badge !== undefined && badge > 0 && (
         <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-accent text-accent-foreground text-2xs font-700 flex items-center justify-center">
-          {item.badge > 9 ? '9+' : item.badge}
+          {badge > 9 ? '9+' : badge}
         </span>
       )}
     </Link>

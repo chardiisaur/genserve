@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import EmptyState from '@/components/ui/EmptyState';
 import Modal from '@/components/ui/Modal';
@@ -300,6 +301,15 @@ export default function PartsInventoryScreen() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Icon name="ArrowLeftIcon" size={13} />
+              Back to Dashboard
+            </Link>
+          </div>
           <h1 className="text-2xl font-600 text-foreground">Parts Inventory</h1>
           <p className="text-xs text-muted-foreground mt-1">{activeParts.length} active parts · {parts.length} total</p>
         </div>
