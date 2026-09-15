@@ -12,26 +12,35 @@ async function main() {
   console.log('🌱 Seeding GenServe GSMS database...');
 
   // ── Initial Admin User ─────────────────────────────────────────
-  const userCount = await prisma.user.count();
-  if (userCount === 0) {
-    const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
-    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
-    const adminName = process.env.INITIAL_ADMIN_NAME ?? 'System Administrator';
+  // Always upsert the admin user so the correct credentials are guaranteed
+  // even if the database was previously seeded with different credentials.
+  const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
+  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  const adminName = process.env.INITIAL_ADMIN_NAME ?? 'System Administrator';
 
-    if (!adminEmail || !adminPassword) {
-      throw new Error(
-        'INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD must be set in environment variables. ' +
-        'Do not use hardcoded default credentials.'
-      );
-    }
+  if (!adminEmail || !adminPassword) {
+    throw new Error(
+      'INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD must be set in environment variables. ' +
+      'Do not use hardcoded default credentials.'
+    );
+  }
 
-    const passwordHash = await hashPassword(adminPassword);
-    await prisma.user.create({
-      data: { name: adminName, email: adminEmail.toLowerCase(), passwordHash, role: 'ADMIN', status: 'ACTIVE' },
+  const passwordHash = await hashPassword(adminPassword);
+  const normalizedEmail = adminEmail.toLowerCase().trim();
+
+  const existingAdmin = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (existingAdmin) {
+    // Update the existing admin to ensure correct password hash, role, and status
+    await prisma.user.update({
+      where: { email: normalizedEmail },
+      data: { name: adminName, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
     });
-    console.log(`✅ Initial admin created: ${adminEmail}`);
+    console.log(`✅ Admin user updated/verified: ${normalizedEmail}`);
   } else {
-    console.log(`ℹ️  Users already exist — skipping admin seed`);
+    await prisma.user.create({
+      data: { name: adminName, email: normalizedEmail, passwordHash, role: 'ADMIN', status: 'ACTIVE' },
+    });
+    console.log(`✅ Initial admin created: ${normalizedEmail}`);
   }
 
   // ── Service Types ──────────────────────────────────────────────
