@@ -136,8 +136,8 @@ model ServiceJob {
   priority                String   @default("Normal")
   scheduledDate           String   @default("")
   status                  String   @default("Open")
-  leadTechnicianId        String   @default("")
-  additionalTechnicianId  String   @default("")
+  leadTechnicianId        String?
+  additionalTechnicianId  String?
   startDate               String   @default("")
   completionDate          String   @default("")
   runningHours            Float    @default(0)
@@ -178,7 +178,7 @@ model PmsRecord {
   runningHours    Float    @default(0)
   nextPmsDate     String   @default("")
   nextPmsHours    Int      @default(0)
-  technicianId    String   @default("")
+  technicianId    String?
   pmsScope        String   @default("")
   pmsStatus       String   @default("Scheduled")
   engineOil       String   @default("OK")
@@ -249,7 +249,7 @@ model PartUsed {
   totalCost       Float    @default(0)
   totalSelling    Float    @default(0)
   dateUsed        String
-  technicianId    String   @default("")
+  technicianId    String?
   remarks         String   @default("")
   createdAt       DateTime @default(now())
 
@@ -264,7 +264,7 @@ model Expense {
   expenseId   String   @unique
   jobOrderNo  String
   date        String
-  technicianId String  @default("")
+  technicianId String?
   expenseType String   @default("Transport")
   description String   @default("")
   amount      Float    @default(0)
@@ -375,6 +375,12 @@ model Setting {
   value     String
   notes     String   @default("")
   updatedAt DateTime @updatedAt
+}
+
+model JobOrderSequence {
+  id      String @id @default(cuid())
+  year    Int    @unique
+  lastSeq Int    @default(0)
 }
 
 model User {
