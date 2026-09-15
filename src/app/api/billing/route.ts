@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
+
+const VALID_BILLING_STATUSES = ['Pending', 'Quoted', 'Approved', 'Invoiced', 'Paid', 'Unpaid', 'Cancelled'];
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth();
@@ -15,16 +17,33 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
-    const { labor = 0, parts = 0, transportation = 0, accommodation = 0, otherCharges = 0, discount = 0 } = body;
+    if (!body.jobOrderNo?.trim()) {
+      return NextResponse.json({ error: 'jobOrderNo is required' }, { status: 400 });
+    }
+    if (body.billingStatus && !VALID_BILLING_STATUSES.includes(body.billingStatus)) {
+      return NextResponse.json({ error: `Invalid billingStatus: ${body.billingStatus}` }, { status: 400 });
+    }
+    // Validate job exists
+    const job = await prisma.serviceJob.findUnique({ where: { jobOrderNo: body.jobOrderNo } });
+    if (!job) return NextResponse.json({ error: 'Service job not found.' }, { status: 400 });
+
+    const labor = Number(body.labor) || 0;
+    const parts = Number(body.parts) || 0;
+    const transportation = Number(body.transportation) || 0;
+    const accommodation = Number(body.accommodation) || 0;
+    const otherCharges = Number(body.otherCharges) || 0;
+    const discount = Number(body.discount) || 0;
     const totalAmount = labor + parts + transportation + accommodation + otherCharges - discount;
+
     const record = await prisma.quotationBilling.create({
       data: {
         transactionId: `txn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         ...body,
+        labor, parts, transportation, accommodation, otherCharges, discount,
         totalAmount,
       },
     });

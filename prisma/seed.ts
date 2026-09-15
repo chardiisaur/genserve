@@ -14,9 +14,17 @@ async function main() {
   // ── Initial Admin User ─────────────────────────────────────────
   const userCount = await prisma.user.count();
   if (userCount === 0) {
-    const adminEmail = process.env.INITIAL_ADMIN_EMAIL ?? 'admin@indentrade.com.ph';
-    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD ?? 'GSMSadmin@2026';
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
     const adminName = process.env.INITIAL_ADMIN_NAME ?? 'System Administrator';
+
+    if (!adminEmail || !adminPassword) {
+      throw new Error(
+        'INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD must be set in environment variables. ' +
+        'Do not use hardcoded default credentials.'
+      );
+    }
+
     const passwordHash = await hashPassword(adminPassword);
     await prisma.user.create({
       data: { name: adminName, email: adminEmail.toLowerCase(), passwordHash, role: 'ADMIN', status: 'ACTIVE' },

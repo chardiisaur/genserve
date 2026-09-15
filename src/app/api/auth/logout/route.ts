@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 export async function POST() {
   try {
     const session = await getSession();
-    session?.destroy();
+    await session?.destroy();
     return NextResponse?.json({ success: true });
   } catch (err) {
     console.error('[AUTH LOGOUT ERROR]', err);

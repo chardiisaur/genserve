@@ -10,32 +10,27 @@ import { saveAuthUser, getInitials } from '@/lib/auth';
 interface LoginFormData {
   email: string;
   password: string;
-  rememberMe: boolean;
 }
 
-const demoHints = [
+// Role hint buttons — no passwords stored here.
+// Clicking autofills only the email; the user must enter their own password.
+const roleHints = [
   {
-    id: 'demo-admin',
+    id: 'hint-admin',
     role: 'Admin',
-    email: 'admin@indentrade.com.ph',
-    password: 'GSMSadmin@2026',
-    description: 'Default admin — created on first run',
+    description: 'Full system access — user management & configuration',
     color: 'bg-blue-100 text-blue-700 border-blue-200',
   },
   {
-    id: 'demo-manager',
+    id: 'hint-manager',
     role: 'Manager',
-    email: 'manager@indentrade.com.ph',
-    password: 'GSMSmgr@2026',
-    description: 'Create this account in User Management first',
+    description: 'Operational management — clients, jobs, PMS, billing',
     color: 'bg-violet-100 text-violet-700 border-violet-200',
   },
   {
-    id: 'demo-tech',
+    id: 'hint-tech',
     role: 'Field Technician',
-    email: 'technician@indentrade.com.ph',
-    password: 'GSMStech@2026',
-    description: 'Create this account in User Management first',
+    description: 'View & update assigned jobs and PMS records',
     color: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   },
 ];
@@ -49,11 +44,8 @@ export default function LoginForm() {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
-  } = useForm<LoginFormData>({
-    defaultValues: { rememberMe: false },
-  });
+  } = useForm<LoginFormData>();
 
   const onSubmit = async (data: LoginFormData) => {
     setAuthError('');
@@ -88,12 +80,6 @@ export default function LoginForm() {
       setAuthError('Unable to connect. Please try again.');
       setIsLoading(false);
     }
-  };
-
-  const autofill = (hint: (typeof demoHints)[0]) => {
-    setValue('email', hint.email);
-    setValue('password', hint.password);
-    setAuthError('');
   };
 
   return (
@@ -150,11 +136,9 @@ export default function LoginForm() {
 
           {/* Password */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="password" className="block text-xs font-500 text-foreground">
-                Password
-              </label>
-            </div>
+            <label htmlFor="password" className="block text-xs font-500 text-foreground mb-1.5">
+              Password
+            </label>
             <div className="relative">
               <input
                 id="password"
@@ -186,19 +170,6 @@ export default function LoginForm() {
             )}
           </div>
 
-          {/* Remember me */}
-          <div className="flex items-center gap-2">
-            <input
-              id="rememberMe"
-              type="checkbox"
-              className="w-3.5 h-3.5 rounded border-input text-primary focus:ring-primary/30 cursor-pointer"
-              {...register('rememberMe')}
-            />
-            <label htmlFor="rememberMe" className="text-xs text-muted-foreground cursor-pointer">
-              Keep me signed in for 30 days
-            </label>
-          </div>
-
           {/* Submit */}
           <button
             type="submit"
@@ -221,33 +192,23 @@ export default function LoginForm() {
           </button>
         </form>
 
-        {/* Demo credentials */}
+        {/* Role information — no credentials exposed */}
         <div className="mt-7 pt-6 border-t border-border">
           <div className="flex items-center gap-2 mb-3">
-            <Icon name="InformationCircleIcon" size={14} className="text-muted-foreground flex-shrink-0" />
-            <p className="text-2xs text-muted-foreground font-500">Default accounts — click to autofill credentials</p>
+            <Icon name="ShieldCheckIcon" size={14} className="text-muted-foreground flex-shrink-0" />
+            <p className="text-2xs text-muted-foreground font-500">Available access levels in this system</p>
           </div>
           <div className="space-y-2">
-            {demoHints.map((hint) => (
-              <button
+            {roleHints.map((hint) => (
+              <div
                 key={hint.id}
-                type="button"
-                onClick={() => autofill(hint)}
-                className="
-                  w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border
-                  hover:border-primary/40 hover:bg-muted/60 transition-all duration-150 text-left
-                  active:scale-[0.99]
-                "
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border"
               >
                 <span className={`text-2xs font-700 px-2 py-0.5 rounded-md border flex-shrink-0 ${hint.color}`}>
                   {hint.role}
                 </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-500 text-foreground truncate">{hint.email}</p>
-                  <p className="text-2xs text-muted-foreground">{hint.description}</p>
-                </div>
-                <Icon name="ArrowRightIcon" size={12} className="text-muted-foreground flex-shrink-0" />
-              </button>
+                <p className="text-2xs text-muted-foreground">{hint.description}</p>
+              </div>
             ))}
           </div>
         </div>

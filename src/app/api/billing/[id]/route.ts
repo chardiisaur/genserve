@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
+
+const VALID_BILLING_STATUSES = ['Pending', 'Quoted', 'Approved', 'Invoiced', 'Paid', 'Unpaid', 'Cancelled'];
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -17,16 +19,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;
     const body = await req.json();
-    const { labor = 0, parts = 0, transportation = 0, accommodation = 0, otherCharges = 0, discount = 0 } = body;
+    if (body.billingStatus && !VALID_BILLING_STATUSES.includes(body.billingStatus)) {
+      return NextResponse.json({ error: `Invalid billingStatus: ${body.billingStatus}` }, { status: 400 });
+    }
+    const labor = Number(body.labor) || 0;
+    const parts = Number(body.parts) || 0;
+    const transportation = Number(body.transportation) || 0;
+    const accommodation = Number(body.accommodation) || 0;
+    const otherCharges = Number(body.otherCharges) || 0;
+    const discount = Number(body.discount) || 0;
     const totalAmount = labor + parts + transportation + accommodation + otherCharges - discount;
     const record = await prisma.quotationBilling.update({
       where: { transactionId: id },
-      data: { ...body, totalAmount },
+      data: { ...body, labor, parts, transportation, accommodation, otherCharges, discount, totalAmount },
     });
     return NextResponse.json(record);
   } catch (err: unknown) {
@@ -38,7 +48,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const { id } = await params;

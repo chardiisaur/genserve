@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe client ID: prefix + timestamp ms + 4-char random suffix */
 function newClientId(): string {
@@ -23,11 +23,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
-    if (!body.clientName) {
+    if (!body.clientName?.trim()) {
       return NextResponse.json({ error: 'clientName is required' }, { status: 400 });
     }
     const client = await prisma.client.create({

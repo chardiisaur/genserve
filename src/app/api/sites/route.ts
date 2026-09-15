@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
 
 function newSiteId(): string {
   return `site-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -22,13 +22,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
-    if (!body.clientId || !body.siteName) {
+    if (!body.clientId?.trim() || !body.siteName?.trim()) {
       return NextResponse.json({ error: 'clientId and siteName are required' }, { status: 400 });
     }
+    // Verify client exists
+    const client = await prisma.client.findUnique({ where: { clientId: body.clientId } });
+    if (!client) return NextResponse.json({ error: 'Client not found.' }, { status: 400 });
+
     const site = await prisma.site.create({
       data: { siteId: newSiteId(), ...body },
     });

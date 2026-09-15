@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isNextResponse } from '@/lib/rbac';
+import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
 
 /** Collision-safe generator ID */
 function newGeneratorId(): string {
@@ -26,13 +26,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth();
+  const auth = await requireManagerOrAbove();
   if (isNextResponse(auth)) return auth;
   try {
     const body = await req.json();
-    if (!body.clientId || !body.siteId) {
+    if (!body.clientId?.trim() || !body.siteId?.trim()) {
       return NextResponse.json({ error: 'clientId and siteId are required' }, { status: 400 });
     }
+    // Validate site belongs to client
+    const site = await prisma.site.findUnique({ where: { siteId: body.siteId } });
+    if (!site) return NextResponse.json({ error: 'Site not found.' }, { status: 400 });
+    if (site.clientId !== body.clientId) {
+      return NextResponse.json({ error: 'Site does not belong to the selected client.' }, { status: 400 });
+    }
+
     const generator = await prisma.generator.create({
       data: { generatorId: newGeneratorId(), ...body },
     });
