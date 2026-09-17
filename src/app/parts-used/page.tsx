@@ -356,7 +356,7 @@ export default function PartsUsedPage() {
                     <th className="text-right px-4 py-3 font-600 text-muted-foreground">Qty</th>
                     <th className="text-right px-4 py-3 font-600 text-muted-foreground">Unit Cost</th>
                     <th className="text-right px-4 py-3 font-600 text-muted-foreground">Total Cost</th>
-                    <th className="text-left px-4 py-3 font-600 text-muted-foreground">Technician</th>
+                    <th className="text-left px-4 py-3 font-600 text-muted-foreground">Manpower</th>
                     <th className="text-left px-4 py-3 font-600 text-muted-foreground">Remarks</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -566,9 +566,9 @@ export default function PartsUsedPage() {
               />
             </div>
 
-            {/* Technician */}
+            {/* Manpower */}
             <div>
-              <label className="block text-xs font-500 text-foreground mb-1.5">Technician</label>
+              <label className="block text-xs font-500 text-foreground mb-1.5">Manpower</label>
               <select
                 value={form.technicianId}
                 onChange={e => setForm(f => ({ ...f, technicianId: e.target.value }))}

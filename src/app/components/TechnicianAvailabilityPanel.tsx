@@ -30,7 +30,7 @@ export default function TechnicianAvailabilityPanel({ technicians }: TechnicianA
     <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div>
-          <h3 className="text-sm font-600 text-foreground">Technician Availability</h3>
+          <h3 className="text-sm font-600 text-foreground">Manpower Availability</h3>
           <p className="text-2xs text-muted-foreground mt-0.5">
             <span className="text-emerald-600 font-600">{available} available</span>
             {' · '}{technicians.length - available} deployed/leave
@@ -43,7 +43,7 @@ export default function TechnicianAvailabilityPanel({ technicians }: TechnicianA
       {technicians.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
           <Icon name="UsersIcon" size={28} className="mb-2 opacity-40" />
-          <p className="text-xs">No technicians found</p>
+          <p className="text-xs">No manpower records found</p>
         </div>
       ) : (
         <div className="divide-y divide-border">

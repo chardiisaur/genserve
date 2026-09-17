@@ -5,6 +5,12 @@ import Link from 'next/link';
 import Icon from '@/components/ui/AppIcon';
 import EmptyState from '@/components/ui/EmptyState';
 import Modal from '@/components/ui/Modal';
+import {
+  MANPOWER_POSITIONS,
+  MANPOWER_SKILLSETS,
+  parseSkillsets,
+  serializeSkillsets,
+} from '@/lib/manpowerConstants';
 
 export type SkillLevel = 'Junior' | 'Mid-Level' | 'Senior' | 'Lead';
 export type Availability = 'Available' | 'Deployed' | 'On Leave' | 'Inactive';
@@ -16,6 +22,7 @@ export interface Technician {
   position: string;
   contactNo: string;
   skillLevel: SkillLevel;
+  skillsets: string; // JSON string in DB, parsed to string[] in UI
   engineExpertise: string;
   controllerExpertise: string;
   electricalExpertise: string;
@@ -25,19 +32,22 @@ export interface Technician {
   remarks: string;
 }
 
-const emptyTech: Omit<Technician, 'id' | 'technicianId'> = {
+const emptyTech = {
   technicianName: '',
   position: '',
   contactNo: '',
-  skillLevel: 'Junior',
+  skillLevel: 'Junior' as SkillLevel,
+  skillsets: [] as string[],
   engineExpertise: '',
   controllerExpertise: '',
   electricalExpertise: '',
   mechanicalExpertise: '',
-  availability: 'Available',
+  availability: 'Available' as Availability,
   certifications: '',
   remarks: '',
 };
+
+type FormState = typeof emptyTech;
 
 const availabilityColors: Record<Availability, string> = {
   Available: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -53,8 +63,6 @@ const skillColors: Record<SkillLevel, string> = {
   Lead: 'bg-amber-100 text-amber-700',
 };
 
-// Mock data removed — all data comes from the real database API
-
 export default function TechniciansScreen() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +72,7 @@ export default function TechniciansScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editTech, setEditTech] = useState<Technician | null>(null);
   const [detailTech, setDetailTech] = useState<Technician | null>(null);
-  const [form, setForm] = useState(emptyTech);
+  const [form, setForm] = useState<FormState>({ ...emptyTech });
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Technician | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +88,7 @@ export default function TechniciansScreen() {
       const data = await res.json();
       setTechnicians(data);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Failed to load technicians');
+      setError((err as Error).message || 'Failed to load manpower');
     } finally {
       setLoading(false);
     }
@@ -92,11 +100,12 @@ export default function TechniciansScreen() {
     return technicians.filter(t => {
       if (search) {
         const q = search.toLowerCase();
+        const skills = parseSkillsets(t.skillsets).join(' ').toLowerCase();
         if (
           !t.technicianName.toLowerCase().includes(q) &&
           !t.position.toLowerCase().includes(q) &&
           !t.contactNo.includes(q) &&
-          !t.engineExpertise.toLowerCase().includes(q)
+          !skills.includes(q)
         ) return false;
       }
       if (filterAvailability && t.availability !== filterAvailability) return false;
@@ -114,7 +123,7 @@ export default function TechniciansScreen() {
 
   const openCreate = () => {
     setEditTech(null);
-    setForm({ ...emptyTech });
+    setForm({ ...emptyTech, skillsets: [] });
     setModalOpen(true);
   };
 
@@ -125,6 +134,7 @@ export default function TechniciansScreen() {
       position: t.position,
       contactNo: t.contactNo,
       skillLevel: t.skillLevel,
+      skillsets: parseSkillsets(t.skillsets),
       engineExpertise: t.engineExpertise,
       controllerExpertise: t.controllerExpertise,
       electricalExpertise: t.electricalExpertise,
@@ -136,22 +146,36 @@ export default function TechniciansScreen() {
     setModalOpen(true);
   };
 
+  const toggleSkillset = (skill: string) => {
+    setForm(prev => {
+      const current = prev.skillsets;
+      const updated = current.includes(skill)
+        ? current.filter(s => s !== skill)
+        : [...current, skill];
+      return { ...prev, skillsets: updated };
+    });
+  };
+
   const handleSave = async () => {
     if (!form.technicianName.trim() || !form.position.trim()) return;
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        skillsets: serializeSkillsets(form.skillsets),
+      };
       let res: Response;
       if (editTech) {
         res = await fetch(`/api/technicians/${editTech.technicianId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
       } else {
         res = await fetch('/api/technicians', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
+          body: JSON.stringify(payload),
         });
       }
       if (!res.ok) {
@@ -161,7 +185,7 @@ export default function TechniciansScreen() {
       await fetchAll();
       setModalOpen(false);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to save technician');
+      alert((err as Error).message || 'Failed to save manpower record');
     } finally {
       setSaving(false);
     }
@@ -178,11 +202,11 @@ export default function TechniciansScreen() {
       setDeleteConfirm(null);
       if (detailTech?.technicianId === tech.technicianId) setDetailTech(null);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to delete technician');
+      alert((err as Error).message || 'Failed to delete manpower record');
     }
   };
 
-  const f = (key: keyof typeof emptyTech, val: string) =>
+  const f = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm(prev => ({ ...prev, [key]: val }));
 
   return (
@@ -191,7 +215,7 @@ export default function TechniciansScreen() {
       {error && !loading && (
         <div className="flex flex-col items-center justify-center h-64 gap-4">
           <Icon name="ExclamationCircleIcon" size={40} className="text-red-500" />
-          <p className="text-base font-600 text-foreground">Failed to load technicians</p>
+          <p className="text-base font-600 text-foreground">Failed to load manpower</p>
           <p className="text-sm text-muted-foreground">{error}</p>
           <button onClick={() => { setError(null); fetchAll(); }} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-500 hover:bg-primary/90 transition-colors">
             <Icon name="ArrowPathIcon" size={15} />Retry
@@ -212,15 +236,15 @@ export default function TechniciansScreen() {
               Back to Dashboard
             </Link>
           </div>
-          <h1 className="text-2xl font-600 text-foreground">Technicians</h1>
-          <p className="text-xs text-muted-foreground mt-1">Manage workforce — names, positions, skills, and availability</p>
+          <h1 className="text-2xl font-600 text-foreground">Manpower</h1>
+          <p className="text-xs text-muted-foreground mt-1">Manage workforce — names, positions, skillsets, and availability</p>
         </div>
         <button
           onClick={openCreate}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-500 rounded-lg hover:bg-primary/90 transition-colors flex-shrink-0"
         >
           <Icon name="PlusIcon" size={16} />
-          Add Technician
+          Add Manpower
         </button>
       </div>
 
@@ -250,7 +274,7 @@ export default function TechniciansScreen() {
           <Icon name="MagnifyingGlassIcon" size={14} className="text-muted-foreground flex-shrink-0" />
           <input
             type="text"
-            placeholder="Search by name, position, expertise..."
+            placeholder="Search by name, position, skillsets..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none flex-1"
@@ -298,80 +322,90 @@ export default function TechniciansScreen() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Icon name="ArrowPathIcon" size={20} className="animate-spin text-muted-foreground" />
-            <span className="ml-2 text-sm text-muted-foreground">Loading technicians...</span>
+            <span className="ml-2 text-sm text-muted-foreground">Loading manpower...</span>
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="UsersIcon"
-            title="No technicians found"
-            description={search || filterAvailability || filterSkill ? 'Try adjusting your filters.' : 'Add your first technician to get started.'}
-            action={!search && !filterAvailability && !filterSkill ? { label: 'Add Technician', onClick: openCreate } : undefined}
+            title="No manpower records found"
+            description={search || filterAvailability || filterSkill ? 'Try adjusting your filters.' : 'Add your first manpower record to get started.'}
+            action={!search && !filterAvailability && !filterSkill ? { label: 'Add Manpower', onClick: openCreate } : undefined}
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/40">
-                  <th className="text-left px-4 py-3 font-600 text-muted-foreground">Technician</th>
+                  <th className="text-left px-4 py-3 font-600 text-muted-foreground">Name</th>
                   <th className="text-left px-4 py-3 font-600 text-muted-foreground">Position</th>
-                  <th className="text-left px-4 py-3 font-600 text-muted-foreground hidden md:table-cell">Skill Level</th>
+                  <th className="text-left px-4 py-3 font-600 text-muted-foreground hidden md:table-cell">Skillsets</th>
                   <th className="text-left px-4 py-3 font-600 text-muted-foreground hidden lg:table-cell">Contact</th>
-                  <th className="text-left px-4 py-3 font-600 text-muted-foreground hidden xl:table-cell">Engine Expertise</th>
                   <th className="text-left px-4 py-3 font-600 text-muted-foreground">Availability</th>
                   <th className="text-right px-4 py-3 font-600 text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(tech => (
-                  <tr
-                    key={tech.technicianId}
-                    className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => setDetailTech(tech)}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-700 flex-shrink-0">
-                          {tech.technicianName.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                {filtered.map(tech => {
+                  const skills = parseSkillsets(tech.skillsets);
+                  return (
+                    <tr
+                      key={tech.technicianId}
+                      className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                      onClick={() => setDetailTech(tech)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-700 flex-shrink-0">
+                            {tech.technicianName.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                          </div>
+                          <div>
+                            <p className="font-500 text-foreground">{tech.technicianName}</p>
+                            <p className="text-2xs text-muted-foreground">{tech.technicianId}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-500 text-foreground">{tech.technicianName}</p>
-                          <p className="text-2xs text-muted-foreground">{tech.technicianId}</p>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{tech.position || '—'}</td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        {skills.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {skills.slice(0, 3).map(s => (
+                              <span key={s} className="text-2xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">{s}</span>
+                            ))}
+                            {skills.length > 3 && (
+                              <span className="text-2xs text-muted-foreground">+{skills.length - 3}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{tech.contactNo || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-2xs font-600 px-2 py-0.5 rounded-md border ${availabilityColors[tech.availability as Availability] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                          {tech.availability}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEdit(tech)}
+                            className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit"
+                          >
+                            <Icon name="PencilSquareIcon" size={14} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(tech)}
+                            className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                            title="Delete"
+                          >
+                            <Icon name="TrashIcon" size={14} />
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{tech.position || '—'}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className={`text-2xs font-600 px-2 py-0.5 rounded-md ${skillColors[tech.skillLevel]}`}>
-                        {tech.skillLevel}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">{tech.contactNo || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground hidden xl:table-cell">{tech.engineExpertise || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-2xs font-600 px-2 py-0.5 rounded-md border ${availabilityColors[tech.availability as Availability] ?? 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                        {tech.availability}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openEdit(tech)}
-                          className="p-1.5 rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
-                          title="Edit"
-                        >
-                          <Icon name="PencilSquareIcon" size={14} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(tech)}
-                          className="p-1.5 rounded-md hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
-                          title="Delete"
-                        >
-                          <Icon name="TrashIcon" size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -386,7 +420,7 @@ export default function TechniciansScreen() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-              <h2 className="text-sm font-600 text-foreground">Technician Details</h2>
+              <h2 className="text-sm font-600 text-foreground">Manpower Details</h2>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => { openEdit(detailTech); setDetailTech(null); }}
@@ -408,7 +442,7 @@ export default function TechniciansScreen() {
                 </div>
                 <div>
                   <p className="text-base font-600 text-foreground">{detailTech.technicianName}</p>
-                  <p className="text-xs text-muted-foreground">{detailTech.position}</p>
+                  <p className="text-xs text-muted-foreground">{detailTech.position || 'No position set'}</p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <span className={`text-2xs font-600 px-2 py-0.5 rounded-md ${skillColors[detailTech.skillLevel]}`}>
                       {detailTech.skillLevel}
@@ -422,8 +456,21 @@ export default function TechniciansScreen() {
 
               <DetailSection title="Contact">
                 <DetailRow label="Contact No." value={detailTech.contactNo} />
-                <DetailRow label="Technician ID" value={detailTech.technicianId} />
+                <DetailRow label="Manpower ID" value={detailTech.technicianId} />
               </DetailSection>
+
+              {(() => {
+                const skills = parseSkillsets(detailTech.skillsets);
+                return skills.length > 0 ? (
+                  <DetailSection title="Skillsets">
+                    <div className="flex flex-wrap gap-1.5">
+                      {skills.map(s => (
+                        <span key={s} className="text-2xs bg-primary/10 text-primary px-2 py-0.5 rounded-md font-500">{s}</span>
+                      ))}
+                    </div>
+                  </DetailSection>
+                ) : null;
+              })()}
 
               <DetailSection title="Expertise">
                 <DetailRow label="Engine" value={detailTech.engineExpertise} />
@@ -452,7 +499,7 @@ export default function TechniciansScreen() {
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        title={editTech ? `Edit — ${editTech.technicianName}` : 'Add New Technician'}
+        title={editTech ? `Edit Manpower — ${editTech.technicianName}` : 'Add Manpower'}
         size="lg"
       >
         <div className="space-y-4 p-1">
@@ -467,13 +514,16 @@ export default function TechniciansScreen() {
               />
             </FormField>
             <FormField label="Position *" required>
-              <input
-                type="text"
+              <select
                 value={form.position}
                 onChange={e => f('position', e.target.value)}
-                placeholder="e.g. Lead Technician"
-                className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
+                className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option value="">Select position...</option>
+                {MANPOWER_POSITIONS.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </FormField>
             <FormField label="Contact No.">
               <input
@@ -487,7 +537,7 @@ export default function TechniciansScreen() {
             <FormField label="Skill Level">
               <select
                 value={form.skillLevel}
-                onChange={e => f('skillLevel', e.target.value)}
+                onChange={e => f('skillLevel', e.target.value as SkillLevel)}
                 className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 <option>Junior</option>
@@ -499,7 +549,7 @@ export default function TechniciansScreen() {
             <FormField label="Availability">
               <select
                 value={form.availability}
-                onChange={e => f('availability', e.target.value)}
+                onChange={e => f('availability', e.target.value as Availability)}
                 className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
                 <option>Available</option>
@@ -508,6 +558,48 @@ export default function TechniciansScreen() {
                 <option>Inactive</option>
               </select>
             </FormField>
+            <FormField label="Certifications">
+              <input
+                type="text"
+                value={form.certifications}
+                onChange={e => f('certifications', e.target.value)}
+                placeholder="e.g. TESDA NC II"
+                className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </FormField>
+          </div>
+
+          {/* Skillsets multi-select */}
+          <FormField label="Skillsets">
+            <div className="border border-input rounded-lg p-3 bg-background">
+              <p className="text-2xs text-muted-foreground mb-2">Select all that apply:</p>
+              <div className="flex flex-wrap gap-2">
+                {MANPOWER_SKILLSETS.map(skill => {
+                  const selected = form.skillsets.includes(skill);
+                  return (
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => toggleSkillset(skill)}
+                      className={`text-2xs px-2.5 py-1 rounded-md border font-500 transition-all ${
+                        selected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-muted text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+                      }`}
+                    >
+                      {selected && <span className="mr-1">✓</span>}
+                      {skill}
+                    </button>
+                  );
+                })}
+              </div>
+              {form.skillsets.length > 0 && (
+                <p className="text-2xs text-primary mt-2">{form.skillsets.length} skillset{form.skillsets.length !== 1 ? 's' : ''} selected</p>
+              )}
+            </div>
+          </FormField>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Engine Expertise">
               <input
                 type="text"
@@ -544,16 +636,8 @@ export default function TechniciansScreen() {
                 className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
               />
             </FormField>
-            <FormField label="Certifications">
-              <input
-                type="text"
-                value={form.certifications}
-                onChange={e => f('certifications', e.target.value)}
-                placeholder="e.g. TESDA NC II"
-                className="w-full h-9 px-3 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </FormField>
           </div>
+
           <FormField label="Remarks">
             <textarea
               value={form.remarks}
@@ -577,7 +661,7 @@ export default function TechniciansScreen() {
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-500 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {saving ? <Icon name="ArrowPathIcon" size={13} className="animate-spin" /> : <Icon name="CheckIcon" size={13} />}
-              {editTech ? 'Save Changes' : 'Add Technician'}
+              {editTech ? 'Save Changes' : 'Add Manpower'}
             </button>
           </div>
         </div>
@@ -592,7 +676,7 @@ export default function TechniciansScreen() {
                 <Icon name="TrashIcon" size={18} className="text-red-600" />
               </div>
               <div>
-                <p className="text-sm font-600 text-foreground">Delete Technician</p>
+                <p className="text-sm font-600 text-foreground">Delete Manpower Record</p>
                 <p className="text-xs text-muted-foreground">This action cannot be undone.</p>
               </div>
             </div>

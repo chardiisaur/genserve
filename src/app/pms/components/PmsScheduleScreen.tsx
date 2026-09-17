@@ -517,7 +517,7 @@ export default function PmsScheduleScreen() {
       <div className="bg-card border border-border rounded-xl px-4 py-3 flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Icon name="MagnifyingGlassIcon" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input type="text" placeholder="Search by PMS ID, generator, client, technician…"
+          <input type="text" placeholder="Search by PMS ID, generator, client, manpower…"
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm bg-muted/40 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50" />
         </div>
@@ -537,7 +537,7 @@ export default function PmsScheduleScreen() {
         </select>
         <select value={filterTechnician} onChange={e => setFilterTechnician(e.target.value)}
           className="text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground">
-          <option value="">All Technicians</option>
+          <option value="">All Manpower</option>
           {technicians.map(t => <option key={t.technicianId} value={t.technicianId}>{t.technicianName}</option>)}
         </select>
         {(search || filterStatus || filterGenerator || filterTechnician) && (
@@ -576,7 +576,7 @@ export default function PmsScheduleScreen() {
             <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {['PMS Record ID', 'Generator', 'Client', 'Site', 'PMS Type', 'PMS Date', 'Running Hrs', 'Next PMS Date', 'Next PMS Hrs', 'Technician', 'Status'].map(h => (
+                  {['PMS Record ID', 'Generator', 'Client', 'Site', 'PMS Type', 'PMS Date', 'Running Hrs', 'Next PMS Date', 'Next PMS Hrs', 'Assigned Manpower', 'Status'].map(h => (
                     <th key={h} className="text-left px-3 py-3 text-2xs font-600 uppercase tracking-wider text-muted-foreground whitespace-nowrap">{h}</th>
                   ))}
                   <th className="px-3 py-3 text-right text-2xs font-600 uppercase tracking-wider text-muted-foreground w-20">Actions</th>
@@ -688,7 +688,7 @@ export default function PmsScheduleScreen() {
                         { label: 'Running Hours', value: detailRecord.runningHours ? `${detailRecord.runningHours.toLocaleString()} hrs` : '—' },
                         { label: 'Next PMS Date', value: detailRecord.nextPmsDate || '—' },
                         { label: 'Next PMS Hours', value: detailRecord.nextPmsHours ? `${detailRecord.nextPmsHours.toLocaleString()} hrs` : '—' },
-                        { label: 'Technician', value: detailRecord.technicianName || detailRecord.technicianId || '—' },
+                        { label: 'Assigned Manpower', value: detailRecord.technicianName || detailRecord.technicianId || '—' },
                       ].map(f => (
                         <div key={f.label}>
                           <p className="text-2xs text-muted-foreground font-500 mb-0.5">{f.label}</p>
@@ -841,13 +841,13 @@ export default function PmsScheduleScreen() {
               <PmsFormField label="Running Hours" value={String(form.runningHours)} onChange={v => setForm(f => ({ ...f, runningHours: Number(v) || 0 }))} type="number" placeholder="0" />
               <PmsFormField label="Next PMS Date" value={form.nextPmsDate} onChange={v => setForm(f => ({ ...f, nextPmsDate: v }))} placeholder="e.g. 2026-11-15" />
               <PmsFormField label="Next PMS Hours" value={String(form.nextPmsHours)} onChange={v => setForm(f => ({ ...f, nextPmsHours: Number(v) || 0 }))} type="number" placeholder="0" />
-              {/* Technician */}
+              {/* Assigned Manpower */}
               <div className="col-span-2">
-                <label className="block text-xs font-500 text-muted-foreground mb-1.5">Technician</label>
+                <label className="block text-xs font-500 text-muted-foreground mb-1.5">Assigned Manpower</label>
                 <select value={form.technicianId} onChange={e => setForm(f => ({ ...f, technicianId: e.target.value }))}
                   disabled={dropdownsLoading}
                   className="w-full text-sm bg-muted/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 text-foreground disabled:opacity-60">
-                  <option value="">— No Technician Assigned —</option>
+                  <option value="">— No Manpower Assigned —</option>
                   {technicians.map(t => <option key={t.technicianId} value={t.technicianId}>{t.technicianName}</option>)}
                 </select>
               </div>

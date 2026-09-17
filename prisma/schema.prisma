@@ -106,6 +106,7 @@ model Technician {
   position             String   @default("")
   contactNo            String   @default("")
   skillLevel           String   @default("Junior")
+  skillsets            String   @default("[]")
   engineExpertise      String   @default("")
   controllerExpertise  String   @default("")
   electricalExpertise  String   @default("")

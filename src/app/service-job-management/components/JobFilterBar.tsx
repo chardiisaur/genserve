@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from '@/components/ui/AppIcon';
 import { FilterState } from './ServiceJobsScreen';
-import { technicians, serviceTypes } from './mockData';
+import { serviceTypes } from './mockData';
 
 interface JobFilterBarProps {
   filters: FilterState;
@@ -18,6 +18,18 @@ const billingOptions = ['Pending', 'Quoted', 'Approved', 'Invoiced', 'Paid', 'Ca
 export default function JobFilterBar({ filters, onChange, onReset }: JobFilterBarProps) {
   const activeCount = Object.values(filters).filter(v => v !== '').length;
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [manpowerNames, setManpowerNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/technicians')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { technicianName: string }[]) => {
+        if (Array.isArray(data)) {
+          setManpowerNames(data.map(t => t.technicianName));
+        }
+      })
+      .catch(() => {/* silently fail */});
+  }, []);
 
   const update = (key: keyof FilterState, value: string) => {
     onChange({ ...filters, [key]: value });
@@ -34,7 +46,7 @@ export default function JobFilterBar({ filters, onChange, onReset }: JobFilterBa
             type="text"
             value={filters.search}
             onChange={(e) => update('search', e.target.value)}
-            placeholder="Search by job no., client, site, generator, technician..."
+            placeholder="Search by job no., client, site, generator, manpower..."
             className="flex-1 text-xs bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
           />
           {filters.search && (
@@ -101,12 +113,12 @@ export default function JobFilterBar({ filters, onChange, onReset }: JobFilterBa
             options={serviceTypes.map(s => s.name)}
             onChange={(v) => update('serviceType', v)}
           />
-          {/* Technician */}
+          {/* Lead Manpower */}
           <FilterSelect
             id="filter-tech"
-            label="Lead Technician"
+            label="Lead Manpower"
             value={filters.technician}
-            options={technicians.map(t => t.name)}
+            options={manpowerNames}
             onChange={(v) => update('technician', v)}
           />
           {/* Billing Status */}
@@ -164,7 +176,7 @@ function FilterSelect({
           ${value ? 'border-primary/40 text-primary font-500' : 'border-input text-foreground'}
         `}
       >
-        <option value="">All {label}s</option>
+        <option value="">All {label}</option>
         {options.map(opt => (
           <option key={`opt-${id}-${opt}`} value={opt}>{opt}</option>
         ))}

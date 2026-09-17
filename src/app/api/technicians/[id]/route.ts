@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
+import { serializeSkillsets } from '@/lib/manpowerConstants';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -25,6 +26,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.technicianName !== undefined && !body.technicianName?.trim()) {
       return NextResponse.json({ error: 'technicianName cannot be empty' }, { status: 400 });
     }
+    // Serialize skillsets array to JSON string for storage
+    if (Array.isArray(body.skillsets)) {
+      body.skillsets = serializeSkillsets(body.skillsets);
+    }
     const tech = await prisma.technician.update({ where: { technicianId: id }, data: body });
     return NextResponse.json(tech);
   } catch (err: unknown) {
@@ -44,7 +49,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       where: { technicianId: id, status: { in: ['Planned', 'Deployed'] } },
     });
     if (activeDeployments > 0) {
-      return NextResponse.json({ error: `Cannot delete technician — ${activeDeployments} active deployment(s) exist. Complete or cancel them first.` }, { status: 409 });
+      return NextResponse.json({ error: `Cannot delete — ${activeDeployments} active deployment(s) exist. Complete or cancel them first.` }, { status: 409 });
     }
     await prisma.technician.delete({ where: { technicianId: id } });
     return NextResponse.json({ success: true });
