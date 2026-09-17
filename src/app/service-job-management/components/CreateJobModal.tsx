@@ -470,19 +470,19 @@ export default function CreateJobModal({ open, editJob, onClose, onCreate, onUpd
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-500 text-foreground mb-1.5">Lead Technician</label>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Lead Manpower</label>
                 <select
                   {...register('leadTechnicianId')}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
-                  <option value="">Select technician...</option>
+                  <option value="">Select manpower...</option>
                   {technicians.map(t => (
                     <option key={t.technicianId} value={t.technicianId}>{t.technicianName}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-500 text-foreground mb-1.5">Additional Technician</label>
+                <label className="block text-xs font-500 text-foreground mb-1.5">Additional Manpower</label>
                 <select
                   {...register('additionalTechnicianId')}
                   className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted/30 focus:outline-none focus:ring-2 focus:ring-primary/30"

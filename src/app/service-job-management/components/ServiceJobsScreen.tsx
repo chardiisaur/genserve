@@ -315,7 +315,7 @@ export default function ServiceJobsScreen() {
                   { key: 'serviceType', label: 'Service Type' },
                   { key: 'priority', label: 'Priority' },
                   { key: 'status', label: 'Status' },
-                  { key: 'leadTechnicianName', label: 'Lead Technician' },
+                  { key: 'leadTechnicianName', label: 'Lead Manpower' },
                   { key: 'scheduledDate', label: 'Scheduled Date' },
                   { key: 'billingStatus', label: 'Billing' },
                 ] as { key: keyof ServiceJob; label: string }[]).map(col => (

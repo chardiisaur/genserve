@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireManagerOrAbove, isNextResponse } from '@/lib/rbac';
+import { serializeSkillsets } from '@/lib/manpowerConstants';
 
 /** Collision-safe technician ID */
 function newTechnicianId(): string {
@@ -50,8 +51,16 @@ export async function POST(req: NextRequest) {
     if (!body.technicianName?.trim()) {
       return NextResponse.json({ error: 'technicianName is required' }, { status: 400 });
     }
+    // Serialize skillsets array to JSON string for storage
+    const skillsets = Array.isArray(body.skillsets)
+      ? serializeSkillsets(body.skillsets)
+      : (body.skillsets ?? '[]');
     const tech = await prisma.technician.create({
-      data: { technicianId: newTechnicianId(), ...body },
+      data: {
+        technicianId: newTechnicianId(),
+        ...body,
+        skillsets,
+      },
     });
     return NextResponse.json(tech, { status: 201 });
   } catch (err: unknown) {

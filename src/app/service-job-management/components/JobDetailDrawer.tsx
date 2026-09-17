@@ -150,11 +150,11 @@ export default function JobDetailDrawer({ job, onClose, onEdit, onStatusChange, 
               </DetailSection>
 
               {/* Assignment */}
-              <DetailSection title="Assignment">
+              <DetailSection title="Assigned Manpower">
                 <DetailGrid>
-                  <DetailField label="Lead Technician" value={job.leadTechnicianName} />
+                  <DetailField label="Lead Manpower" value={job.leadTechnicianName} />
                   {job.additionalTechnicianName && (
-                    <DetailField label="Additional Technician" value={job.additionalTechnicianName} />
+                    <DetailField label="Additional Manpower" value={job.additionalTechnicianName} />
                   )}
                   {job.customerRepresentative && (
                     <DetailField label="Customer Rep." value={job.customerRepresentative} />

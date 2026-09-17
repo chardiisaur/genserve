@@ -38,7 +38,7 @@ const adminNavGroups: { group: string; items: NavItem[] }[] = [
   {
     group: 'Workforce',
     items: [
-      { id: 'nav-technicians', label: 'Technicians', icon: 'UsersIcon', href: '/technicians' },
+      { id: 'nav-technicians', label: 'Manpower', icon: 'UsersIcon', href: '/technicians' },
       { id: 'nav-deployments', label: 'Deployments', icon: 'TruckIcon', href: '/deployments' },
     ],
   },
